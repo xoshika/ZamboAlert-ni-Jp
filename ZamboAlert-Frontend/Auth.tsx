@@ -668,7 +668,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
           <View style={styles.formContainer}>
             <InputField
               icon={User}
-              placeholder="Username (e.g. rescuer2)"
+              placeholder="First Name and Last Name"
               value={usernameInput}
               onChangeText={setUsernameInput}
             />
@@ -1099,10 +1099,6 @@ export function SessionSettingsSection({
           </TouchableOpacity>
         </View>
 
-        <Text style={settingsStyles.cardDescription}>
-          Adds an extra layer of security by requesting a dynamic authentication token upon login.
-        </Text>
-
         {showMfaSetup && (
           <View style={settingsStyles.mfaSetupBox}>
             <Text style={settingsStyles.mfaSetupTitle}>Setup Authenticator App</Text>
@@ -1209,7 +1205,7 @@ export function SessionSettingsSection({
       {/* Log Out Button */}
       <TouchableOpacity onPress={onLogout} style={settingsStyles.logoutBtn}>
         <LogOut size={16} color="#ffffff" style={{ marginRight: 8 }} />
-        <Text style={settingsStyles.logoutBtnText}>Revoke Session & Exit</Text>
+        <Text style={settingsStyles.logoutBtnText}>Logout</Text>
       </TouchableOpacity>
     </View>
   );

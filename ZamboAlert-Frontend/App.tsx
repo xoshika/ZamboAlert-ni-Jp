@@ -30,6 +30,7 @@ import {
   Settings,
   ArrowUp,
   X,
+  LifeBuoy,
 } from "lucide-react-native";
 import {
   AuthContainer,
@@ -1065,12 +1066,23 @@ function RescuersApp({
             </Mono>
           </View>
         </View>
-        <TouchableOpacity
-          onPress={() => setShowSettings(true)}
-          style={styles.headerSettingsBtn}
-        >
-          <Settings size={16} color="#000000" />
-        </TouchableOpacity>
+        <View style={[styles.row, { gap: 8 }]}>
+          <TouchableOpacity
+            onPress={() => {
+              toast.info("Help Requested", { description: "Other respondents have been notified of your request for assistance." });
+            }}
+            style={styles.headerHelpBtn}
+          >
+            <LifeBuoy size={16} color="#ffffff" />
+            <Text style={styles.headerHelpText}>SOS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowSettings(true)}
+            style={styles.headerSettingsBtn}
+          >
+            <Settings size={16} color="#000000" />
+          </TouchableOpacity>
+        </View>
       </View>
 
 
@@ -1437,6 +1449,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#9ca3af",
     marginLeft: 6,
+  },
+  headerHelpBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    gap: 6,
+  },
+  headerHelpText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "bold",
   },
   headerSettingsBtn: {
     width: 36,
