@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "expo": "~54.0.0",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "lucide-react-native": "^1.23.0",
     "react": "19.1.0",

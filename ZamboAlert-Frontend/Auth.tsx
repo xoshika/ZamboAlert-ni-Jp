@@ -321,6 +321,8 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
 
   // Form inputs
   const [usernameInput, setUsernameInput] = useState("");
+  const [firstNameInput, setFirstNameInput] = useState("");
+  const [lastNameInput, setLastNameInput] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -466,7 +468,9 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
 
   // Registration handler
   const handleRegister = async () => {
-    if (!usernameInput.trim() || !emailInput.trim() || !passwordInput) {
+    const fullName = `${firstNameInput.trim()} ${lastNameInput.trim()}`;
+
+    if (!firstNameInput.trim() || !lastNameInput.trim() || !emailInput.trim() || !passwordInput) {
       toast.error("Missing fields", { description: "Please fill out all fields." });
       return;
     }
@@ -476,7 +480,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    if (getUserByIdentifier(usernameInput) || MOCK_USERS_DATABASE.some((u) => u.email.toLowerCase() === emailInput.trim().toLowerCase())) {
+    if (getUserByIdentifier(fullName) || MOCK_USERS_DATABASE.some((u) => u.email.toLowerCase() === emailInput.trim().toLowerCase())) {
       toast.error("Account exists", { description: "That username or email is already registered locally." });
       return;
     }
@@ -484,7 +488,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
     setLoading(true);
 
     const newUser: UserRecord = {
-      username: usernameInput.trim(),
+      username: fullName,
       email: emailInput.trim(),
       passwordHash: sha256(passwordInput),
       isVerified: true,
@@ -496,7 +500,8 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
     MOCK_USERS_DATABASE.push(newUser);
     setLoading(false);
     setScreen("LOGIN");
-    setUsernameInput("");
+    setFirstNameInput("");
+    setLastNameInput("");
     setEmailInput("");
     setPasswordInput("");
     toast.success("Account created!", { description: "You can sign in now using the offline local account." });
@@ -668,9 +673,16 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
           <View style={styles.formContainer}>
             <InputField
               icon={User}
-              placeholder="First Name and Last Name"
-              value={usernameInput}
-              onChangeText={setUsernameInput}
+              placeholder="First Name"
+              value={firstNameInput}
+              onChangeText={setFirstNameInput}
+            />
+
+            <InputField
+              icon={User}
+              placeholder="Last Name"
+              value={lastNameInput}
+              onChangeText={setLastNameInput}
             />
 
             <InputField
@@ -1162,12 +1174,14 @@ export function SessionSettingsSection({
           <Text style={settingsStyles.label}>IP Address:</Text>
           <Text style={settingsStyles.value}>{session.ipAddress}</Text>
         </View>
+        {/*
         <View style={settingsStyles.row}>
           <Text style={settingsStyles.label}>Inactivity Timeout:</Text>
           <Text style={[settingsStyles.value, { color: sessionTimeRemaining < 60 ? "#dc2626" : "#000000" }]}>
             {formatTime(sessionTimeRemaining)}
           </Text>
         </View>
+        */}
         <View style={settingsStyles.row}>
           <Text style={settingsStyles.label}>Session Token:</Text>
           <Text style={[settingsStyles.value, { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10 }]}>
@@ -1175,6 +1189,7 @@ export function SessionSettingsSection({
           </Text>
         </View>
 
+        {/*
         <TouchableOpacity
           onPress={async () => {
             try {
@@ -1200,6 +1215,7 @@ export function SessionSettingsSection({
           <RefreshCw size={14} color="#2563eb" style={{ marginRight: 6 }} />
           <Text style={settingsStyles.refreshBtnText}>Renew Inactivity Timer</Text>
         </TouchableOpacity>
+        */}
       </View>
 
       {/* Log Out Button */}

@@ -9,6 +9,7 @@ import {
   Animated,
   Easing,
   StatusBar,
+  TextInput,
 } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
@@ -40,6 +41,8 @@ import {
   SessionDetails,
   saveUser,
 } from "./Auth";
+import { initDatabase } from "./database";
+
 
 // ── Mock Data ───────────────────────────────────────────────────────────────
 
@@ -890,9 +893,45 @@ function PodsView({ nodes }: { nodes: any[] }) {
 
 // ── Log View ───────────────────────────────────────────────────────────────
 
-function LogView({ log }: { log: any[] }) {
+function LogView({ log, onAddLog }: { log: any[], onAddLog: (type: string, message: string) => void }) {
+  const [casualtyCount, setCasualtyCount] = useState("");
+  const [disasterType, setDisasterType] = useState<"Earthquake" | "Fire" | "Flood" | "">("");
+
+  const handleLog = () => {
+    if (!disasterType || !casualtyCount) return;
+    onAddLog("alert", `Casualties recorded for ${disasterType}: ${casualtyCount}`);
+    setCasualtyCount("");
+    setDisasterType("");
+  };
+
   return (
     <View style={styles.viewContainer}>
+      <View style={styles.logActionCard}>
+        <Text style={styles.sectionTitle}>Record Casualties</Text>
+        <View style={styles.disasterButtons}>
+          {(["Earthquake", "Fire", "Flood"] as const).map((d) => (
+            <TouchableOpacity
+              key={d}
+              style={[styles.disasterBtn, disasterType === d && styles.disasterBtnActive]}
+              onPress={() => setDisasterType(d)}
+            >
+              <Text style={[styles.disasterBtnText, disasterType === d && styles.disasterBtnTextActive]}>{d}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TextInput
+          style={styles.input}
+          placeholder="Number of casualties"
+          placeholderTextColor="#666"
+          keyboardType="numeric"
+          value={casualtyCount}
+          onChangeText={setCasualtyCount}
+        />
+        <TouchableOpacity style={styles.submitLogBtn} onPress={handleLog}>
+          <Text style={styles.submitLogBtnText}>Submit Log</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.listContainer}>
         {log.map((entry) => {
           const t = logTypeColors[entry.type as keyof typeof logTypeColors];
@@ -938,6 +977,20 @@ function RescuersApp({
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'info' | 'error'; title: string; desc?: string } | null>(null);
   const [victimsList, setVictimsList] = useState(VICTIMS);
   const [updateModalVictimId, setUpdateModalVictimId] = useState<string | null>(null);
+  const [logs, setLogs] = useState(LOG);
+
+  const addLog = (type: string, message: string) => {
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+    const newLog = {
+      id: `l${Date.now()}`,
+      time: timeStr,
+      type,
+      message,
+    };
+    setLogs([newLog, ...logs]);
+    toast.success("Log Added", { description: "Casualty log recorded successfully." });
+  };
 
   const updateVictimSituation = (id: string, newSituation: string) => {
     setVictimsList((prev) =>
@@ -1129,7 +1182,7 @@ function RescuersApp({
           />
         )}
         {tab === "pods" && <PodsView nodes={MESH_NODES} />}
-        {tab === "log" && <LogView log={LOG} />}
+        {tab === "log" && <LogView log={logs} onAddLog={addLog} />}
       </ScrollView>
 
       {toastMsg && (
@@ -1256,6 +1309,15 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserRecord | null>(null);
   const [currentSession, setCurrentSession] = useState<SessionDetails | null>(null);
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'info' | 'error'; title: string; desc?: string } | null>(null);
+
+  useEffect(() => {
+    // Initialize offline database
+    initDatabase().then(() => {
+      console.log('Offline DB Initialized');
+    }).catch((e) => {
+      console.error('Failed to initialize offline DB:', e);
+    });
+  }, []);
 
   const toast = {
     success: (title: string, options?: { description?: string }) => {
@@ -1463,6 +1525,70 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 12,
     fontWeight: "bold",
+  },
+  logCardMessage: {
+    color: "#e5e7eb",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  logActionCard: {
+    backgroundColor: "#ffffff",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+  },
+  disasterButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  disasterBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: "#f3f4f6",
+    borderRadius: 8,
+    marginHorizontal: 4,
+    alignItems: "center",
+  },
+  disasterBtnActive: {
+    backgroundColor: "#dc2626",
+  },
+  disasterBtnText: {
+    color: "#4b5563",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  disasterBtnTextActive: {
+    color: "#ffffff",
+  },
+  input: {
+    backgroundColor: "#f9fafb",
+    color: "#1f2937",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  submitLogBtn: {
+    backgroundColor: "#dc2626",
+    padding: 14,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  submitLogBtnText: {
+    color: "#ffffff",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   headerSettingsBtn: {
     width: 36,
