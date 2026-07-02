@@ -29,7 +29,16 @@ import {
   HeartPulse,
   Settings,
   ArrowUp,
+  X,
 } from "lucide-react-native";
+import {
+  AuthContainer,
+  SessionSettingsSection,
+  SessionTimeoutOverlay,
+  UserRecord,
+  SessionDetails,
+  saveUser,
+} from "./Auth";
 
 // ── Mock Data ───────────────────────────────────────────────────────────────
 
@@ -903,8 +912,21 @@ function LogView({ log }: { log: any[] }) {
 
 // ── Main App ───────────────────────────────────
 
-function RescuersApp() {
+function RescuersApp({
+  currentUser,
+  session,
+  onLogout,
+  onUpdateUser,
+  globalToast,
+}: {
+  currentUser: UserRecord;
+  session: SessionDetails;
+  onLogout: () => void;
+  onUpdateUser: (updates: Partial<UserRecord>) => void;
+  globalToast: any;
+}) {
   const insets = useSafeAreaInsets();
+  const [showSettings, setShowSettings] = useState(false);
   const [tab, setTab] = useState("radar");
   const [selectedFloor, setSelectedFloor] = useState("-1");
   const [userPos, setUserPos] = useState({ x: 47, y: 48 });
@@ -1043,7 +1065,10 @@ function RescuersApp() {
             </Mono>
           </View>
         </View>
-        <TouchableOpacity style={styles.headerSettingsBtn}>
+        <TouchableOpacity
+          onPress={() => setShowSettings(true)}
+          style={styles.headerSettingsBtn}
+        >
           <Settings size={16} color="#000000" />
         </TouchableOpacity>
       </View>
@@ -1189,14 +1214,141 @@ function RescuersApp() {
           </View>
         );
       })()}
+
+      {showSettings && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: "80%" }]}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <Text style={styles.modalTitle}>Security & Profile</Text>
+              <TouchableOpacity onPress={() => setShowSettings(false)}>
+                <X size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <SessionSettingsSection
+                currentUser={currentUser}
+                session={session}
+                onLogout={onLogout}
+                onUpdateUser={onUpdateUser}
+                toast={globalToast}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserRecord | null>(null);
+  const [currentSession, setCurrentSession] = useState<SessionDetails | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'info' | 'error'; title: string; desc?: string } | null>(null);
+
+  const toast = {
+    success: (title: string, options?: { description?: string }) => {
+      setToastMsg({ type: 'success', title, desc: options?.description });
+    },
+    info: (title: string, options?: { description?: string }) => {
+      setToastMsg({ type: 'info', title, desc: options?.description });
+    },
+    error: (title: string, options?: { description?: string }) => {
+      setToastMsg({ type: 'error', title, desc: options?.description });
+    }
+  };
+
+  useEffect(() => {
+    if (toastMsg) {
+      const timer = setTimeout(() => setToastMsg(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastMsg]);
+
+  // Session Inactivity Monitoring
+  const resetSessionTimer = () => {
+    if (currentSession && currentUser) {
+      currentSession.expiresAt = Date.now() + 5 * 60 * 1000;
+    }
+  };
+
+  const handleLogout = (message?: string) => {
+    setCurrentUser(null);
+    setCurrentSession(null);
+    if (message) {
+      toast.info("Session Closed", { description: message });
+    } else {
+      toast.info("Logged Out", { description: "You have been securely logged out." });
+    }
+  };
+
+  const handleUpdateUser = async (updates: Partial<UserRecord>) => {
+    if (currentUser) {
+      const updated = { ...currentUser, ...updates };
+      setCurrentUser(updated);
+      saveUser(updated);
+      toast.info("Offline Sync", { description: "Updated profile locally." });
+    }
+  };
+
+  // Check for session expiry
+  useEffect(() => {
+    if (!currentSession || !currentUser) return;
+
+    const checkInterval = setInterval(() => {
+      if (Date.now() > currentSession.expiresAt) {
+        clearInterval(checkInterval);
+        handleLogout("Session expired due to inactivity.");
+      }
+    }, 1000);
+
+    return () => clearInterval(checkInterval);
+  }, [currentSession, currentUser]);
+
   return (
     <SafeAreaProvider>
-      <RescuersApp />
+      <View style={{ flex: 1 }} onTouchStart={resetSessionTimer}>
+        {currentUser && currentSession ? (
+          <RescuersApp
+            currentUser={currentUser}
+            session={currentSession}
+            onLogout={() => handleLogout()}
+            onUpdateUser={handleUpdateUser}
+            globalToast={toast}
+          />
+        ) : (
+          <AuthContainer
+            onLoginSuccess={(user, session) => {
+              setCurrentUser(user);
+              setCurrentSession(session);
+            }}
+            toast={toast}
+          />
+        )}
+
+        {/* Global Toast for Auth Container */}
+        {toastMsg && !currentUser && (
+          <View style={styles.toastOverlay}>
+            <View style={[styles.toastAlert, toastMsg.type === 'success' ? styles.toastSuccess : styles.toastInfo]}>
+              <View style={styles.row}>
+                <AlertTriangle size={14} color={toastMsg.type === 'success' ? '#16a34a' : '#2563eb'} style={{ marginRight: 6 }} />
+                <Text style={styles.toastTitle}>{toastMsg.title}</Text>
+              </View>
+              {toastMsg.desc && (
+                <Text style={styles.toastDesc}>{toastMsg.desc}</Text>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Session Inactivity Timeout Overlay */}
+        {currentSession && currentUser && (
+          <SessionTimeoutOverlay
+            expiresAt={currentSession.expiresAt}
+            onRenew={resetSessionTimer}
+            onExpire={() => handleLogout("Session expired due to inactivity.")}
+          />
+        )}
+      </View>
     </SafeAreaProvider>
   );
 }
