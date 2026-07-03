@@ -191,7 +191,13 @@ function LogView({
               style={[styles.disasterBtn, disasterType === d && styles.disasterBtnActive]}
               onPress={() => setDisasterType(d)}
             >
-              <Text style={[styles.disasterBtnText, disasterType === d && styles.disasterBtnTextActive]}>{d}</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[styles.disasterBtnText, disasterType === d && styles.disasterBtnTextActive]}
+              >
+                {d}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -242,8 +248,9 @@ export function MainTabNavigator() {
   const [victimsList, setVictimsList] = useState(VICTIMS);
   const [updateModalVictimId, setUpdateModalVictimId] = useState<string | null>(null);
   const [logs, setLogs] = useState(LOG);
+  const [rescuerEmergency, setRescuerEmergency] = useState<"trapped" | "injured" | null>(null);
 
-  const addLog = (type: string, message: string) => {
+  const addLog = (type: string, message: string, showToast = true) => {
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
     const newLog = {
@@ -253,7 +260,25 @@ export function MainTabNavigator() {
       message,
     };
     setLogs([newLog, ...logs]);
-    toast.success("Log Added", { description: "Casualty log recorded successfully." });
+    if (showToast) {
+      toast.success("Log Added", { description: "Casualty log recorded successfully." });
+    }
+  };
+
+  const handleUpdateRescuerEmergency = (status: "trapped" | "injured" | null) => {
+    setRescuerEmergency(status);
+    const rescuerName = currentUser ? currentUser.username : "Rescuer";
+    if (status) {
+      addLog("alert", `RESCUER EMERGENCY: ${rescuerName} is ${status} on Floor ${selectedFloor}`, false);
+      toast.error("SOS Alert Sent", {
+        description: `Emergency alert: Rescuer is ${status} on Floor ${selectedFloor}.`,
+      });
+    } else {
+      addLog("system", `RESCUER SOS RESOLVED: ${rescuerName} is safe`, false);
+      toast.info("SOS Resolved", {
+        description: "Your emergency alert has been resolved.",
+      });
+    }
   };
 
   const updateVictimSituation = (id: string, newSituation: string) => {
@@ -368,15 +393,6 @@ export function MainTabNavigator() {
         </View>
         <View style={[styles.row, { gap: 8 }]}>
           <TouchableOpacity
-            onPress={() => {
-              toast.info("Help Requested", { description: "Other respondents have been notified of your request for assistance." });
-            }}
-            style={styles.headerHelpBtn}
-          >
-            <LifeBuoy size={16} color="#ffffff" />
-            <Text style={styles.headerHelpText}>SOS</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => setShowSettings(true)}
             style={styles.headerSettingsBtn}
           >
@@ -384,6 +400,15 @@ export function MainTabNavigator() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {rescuerEmergency && (
+        <View style={styles.emergencyBanner}>
+          <AlertTriangle size={16} color="#ffffff" />
+          <Text style={styles.emergencyBannerText}>
+            RESCUER EMERGENCY: {rescuerEmergency.toUpperCase()} ON FLOOR {selectedFloor}
+          </Text>
+        </View>
+      )}
 
       {showCriticalAlert && criticalVictim && (
         <TouchableOpacity
@@ -425,6 +450,8 @@ export function MainTabNavigator() {
             setIsNavigating={setIsNavigating}
             toast={toast}
             onUpdateSituation={setUpdateModalVictimId}
+            rescuerEmergency={rescuerEmergency}
+            onUpdateRescuerEmergency={handleUpdateRescuerEmergency}
           />
         )}
         {tab === "pods" && <PodsView nodes={MESH_NODES} />}

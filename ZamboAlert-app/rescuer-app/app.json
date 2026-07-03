@@ -4,26 +4,13 @@
     "slug": "zamboalert-rescuers",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/zambolert.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/zambolert.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
-    },
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/android-icon-foreground.png"
-      },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.zamboalertrescuers"
-    },
-    "web": {
-      "favicon": "./assets/zambolert.png"
     },
     "plugins": [
       "expo-sqlite"

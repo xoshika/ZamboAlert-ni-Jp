@@ -161,61 +161,7 @@ export function SessionSettingsSection({
         )}
       </View>
 
-      {/* Secure Session Details */}
-      <View style={settingsStyles.card}>
-        <Text style={settingsStyles.cardHeader}>Secure Session Details</Text>
 
-        <View style={settingsStyles.row}>
-          <Text style={settingsStyles.label}>Device Platform:</Text>
-          <Text style={settingsStyles.value}>{session.deviceInfo}</Text>
-        </View>
-        <View style={settingsStyles.row}>
-          <Text style={settingsStyles.label}>IP Address:</Text>
-          <Text style={settingsStyles.value}>{session.ipAddress}</Text>
-        </View>
-        {/*
-        <View style={settingsStyles.row}>
-          <Text style={settingsStyles.label}>Inactivity Timeout:</Text>
-          <Text style={[settingsStyles.value, { color: sessionTimeRemaining < 60 ? "#dc2626" : "#000000" }]}>
-            {formatTime(sessionTimeRemaining)}
-          </Text>
-        </View>
-        */}
-        <View style={settingsStyles.row}>
-          <Text style={settingsStyles.label}>Session Token:</Text>
-          <Text style={[settingsStyles.value, { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10 }]}>
-            {session.token.substring(0, 8)}...{session.token.substring(session.token.length - 8)}
-          </Text>
-        </View>
-
-        {/*
-        <TouchableOpacity
-          onPress={async () => {
-            try {
-              const response = await fetch(`${BACKEND_URL}/api/auth/session-keepalive`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ sessionToken: session.token }),
-              });
-              const data = await response.json();
-              if (response.ok) {
-                session.expiresAt = data.expiresAt;
-                toast.success("Session Extended", { description: "Your session token has been refreshed." });
-              } else {
-                toast.error("Error", { description: "Failed to extend session." });
-              }
-            } catch (err) {
-              session.expiresAt = Date.now() + 5 * 60 * 1000;
-              toast.success("Session Extended (Offline)", { description: "Your session has been extended locally." });
-            }
-          }}
-          style={settingsStyles.refreshBtn}
-        >
-          <RefreshCw size={14} color="#2563eb" style={{ marginRight: 6 }} />
-          <Text style={settingsStyles.refreshBtnText}>Renew Inactivity Timer</Text>
-        </TouchableOpacity>
-        */}
-      </View>
 
       {/* Log Out Button */}
       <TouchableOpacity onPress={onLogout} style={settingsStyles.logoutBtn}>

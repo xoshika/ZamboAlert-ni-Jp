@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Svg, { Circle, Line, Rect, G } from 'react-native-svg';
-import { Navigation, ShieldAlert, HeartPulse, ChevronRight, MapPin, X, Layers } from 'lucide-react-native';
+import { Navigation, ShieldAlert, HeartPulse, ChevronRight, MapPin, X, Layers, LifeBuoy, AlertTriangle } from 'lucide-react-native';
 import { Mono, PulsingDot } from './SharedUI';
 import { VICTIM_COORDS, situationColors } from '../assets/mockData';
 import { styles } from '../theme/styles';
@@ -18,6 +18,8 @@ export function MapView({
   setIsNavigating,
   toast,
   onUpdateSituation,
+  rescuerEmergency,
+  onUpdateRescuerEmergency,
 }: {
   victims: any[];
   selectedVictim: string;
@@ -30,9 +32,12 @@ export function MapView({
   setIsNavigating: (val: boolean) => void;
   toast: any;
   onUpdateSituation: (id: string) => void;
+  rescuerEmergency: "trapped" | "injured" | null;
+  onUpdateRescuerEmergency: (status: "trapped" | "injured" | null) => void;
 }) {
   const gridCells = 12;
   const [mapLayout, setMapLayout] = useState({ width: 0, height: 0 });
+  const [showSosModal, setShowSosModal] = useState(false);
 
   const handleMapLayout = (e: any) => {
     const { width, height } = e.nativeEvent.layout;
@@ -141,10 +146,38 @@ export function MapView({
             ]}
           >
             <View style={styles.userIconWrapper}>
-              <View style={styles.userIconPing} />
-              <View style={styles.userIconPulse} />
-              <View style={styles.userIconCenter}>
-                <Navigation size={8} color="#ffffff" fill="#ffffff" style={{ transform: [{ rotate: '45deg' }] }} />
+              <View
+                style={
+                  rescuerEmergency === "trapped"
+                    ? styles.userIconPingTrapped
+                    : rescuerEmergency === "injured"
+                    ? styles.userIconPingInjured
+                    : styles.userIconPing
+                }
+              />
+              <View
+                style={
+                  rescuerEmergency === "trapped"
+                    ? styles.userIconPulseTrapped
+                    : rescuerEmergency === "injured"
+                    ? styles.userIconPulseInjured
+                    : styles.userIconPulse
+                }
+              />
+              <View
+                style={
+                  rescuerEmergency === "trapped"
+                    ? styles.userIconCenterTrapped
+                    : rescuerEmergency === "injured"
+                    ? styles.userIconCenterInjured
+                    : styles.userIconCenter
+                }
+              >
+                {rescuerEmergency ? (
+                  <AlertTriangle size={8} color="#ffffff" />
+                ) : (
+                  <Navigation size={8} color="#ffffff" fill="#ffffff" style={{ transform: [{ rotate: '45deg' }] }} />
+                )}
               </View>
             </View>
           </View>
@@ -191,6 +224,14 @@ export function MapView({
               </TouchableOpacity>
             );
           })}
+
+          <TouchableOpacity
+            onPress={() => setShowSosModal(true)}
+            style={styles.mapSosHud}
+          >
+            <LifeBuoy size={16} color="#ffffff" />
+            <Text style={styles.mapSosHudText}>SOS</Text>
+          </TouchableOpacity>
 
           <View style={styles.mapCompassHud}>
             <Mono style={styles.mapCompassText}>N</Mono>
@@ -303,33 +344,137 @@ export function MapView({
         </View>
       )}
 
-      <View style={styles.floorCard}>
-        <Mono style={styles.floorCardTitle}>FLOOR LEVEL</Mono>
-        <View style={styles.floorBtnRow}>
-          {["-2", "-1", "G", "+1", "+2"].map((f) => {
-            const isSelected = f === selectedFloor;
-            return (
-              <TouchableOpacity
-                key={f}
-                disabled={isNavigating}
-                onPress={() => {
-                  if (isNavigating) return;
-                  setSelectedFloor(f);
-                }}
+      {showSosModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <Text style={styles.modalTitle}>Rescuer Emergency (SOS)</Text>
+              <TouchableOpacity onPress={() => setShowSosModal(false)}>
+                <X size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.modalSubtitle}>
+              Select your emergency status. This will alert all other active respondents.
+            </Text>
+
+            {/* Floor Selection inside SOS Modal */}
+            <Mono style={[styles.floorCardTitle, { marginBottom: 8 }]}>SELECT YOUR CURRENT FLOOR</Mono>
+            <View style={[styles.floorBtnRow, { marginBottom: 20 }]}>
+              {["-2", "-1", "G", "+1", "+2"].map((f) => {
+                const isSelected = f === selectedFloor;
+                return (
+                  <TouchableOpacity
+                    key={f}
+                    disabled={isNavigating}
+                    onPress={() => {
+                      if (isNavigating) return;
+                      setSelectedFloor(f);
+                    }}
+                    style={[
+                      styles.floorBtn,
+                      isSelected ? styles.floorBtnSelected : styles.floorBtnNormal,
+                      isNavigating ? styles.disabledBtn : null
+                    ]}
+                  >
+                    <Mono style={[styles.floorBtnText, isSelected ? styles.textWhite : styles.textMuted]}>
+                      {f}
+                    </Mono>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Trapped Option */}
+            <TouchableOpacity
+              onPress={() => {
+                onUpdateRescuerEmergency("trapped");
+                setShowSosModal(false);
+              }}
+              style={[
+                styles.modalOptionRow,
+                {
+                  backgroundColor: rescuerEmergency === "trapped" ? "#dc2626" : "#ffffff",
+                  borderColor: "#dc2626",
+                },
+              ]}
+            >
+              <View
                 style={[
-                  styles.floorBtn,
-                  isSelected ? styles.floorBtnSelected : styles.floorBtnNormal,
-                  isNavigating ? styles.disabledBtn : null
+                  styles.modalOptionDot,
+                  { backgroundColor: rescuerEmergency === "trapped" ? "#ffffff" : "#dc2626" },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.modalOptionText,
+                  { color: rescuerEmergency === "trapped" ? "#ffffff" : "#dc2626" },
                 ]}
               >
-                <Mono style={[styles.floorBtnText, isSelected ? styles.textWhite : styles.textMuted]}>
-                  {f}
-                </Mono>
+                TRAPPED
+              </Text>
+            </TouchableOpacity>
+
+            {/* Injured Option */}
+            <TouchableOpacity
+              onPress={() => {
+                onUpdateRescuerEmergency("injured");
+                setShowSosModal(false);
+              }}
+              style={[
+                styles.modalOptionRow,
+                {
+                  backgroundColor: rescuerEmergency === "injured" ? "#d97706" : "#ffffff",
+                  borderColor: "#d97706",
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modalOptionDot,
+                  { backgroundColor: rescuerEmergency === "injured" ? "#ffffff" : "#d97706" },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.modalOptionText,
+                  { color: rescuerEmergency === "injured" ? "#ffffff" : "#d97706" },
+                ]}
+              >
+                INJURED
+              </Text>
+            </TouchableOpacity>
+
+            {/* Safe / Clear Option */}
+            {rescuerEmergency !== null && (
+              <TouchableOpacity
+                onPress={() => {
+                  onUpdateRescuerEmergency(null);
+                  setShowSosModal(false);
+                }}
+                style={[
+                  styles.modalOptionRow,
+                  {
+                    backgroundColor: "#15803d",
+                    borderColor: "#15803d",
+                  },
+                ]}
+              >
+                <View style={[styles.modalOptionDot, { backgroundColor: "#ffffff" }]} />
+                <Text style={[styles.modalOptionText, { color: "#ffffff" }]}>
+                  RESOLVE / I'M SAFE
+                </Text>
               </TouchableOpacity>
-            );
-          })}
+            )}
+
+            <TouchableOpacity
+              onPress={() => setShowSosModal(false)}
+              style={styles.modalCancelBtn}
+            >
+              <Text style={styles.modalCancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }
