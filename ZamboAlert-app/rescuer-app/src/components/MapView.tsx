@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Svg, { Circle, Line, Rect, G } from 'react-native-svg';
-import { Navigation, ShieldAlert, HeartPulse, ChevronRight, MapPin, X } from 'lucide-react-native';
+import { Navigation, ShieldAlert, HeartPulse, ChevronRight, MapPin, X, Layers } from 'lucide-react-native';
 import { Mono, PulsingDot } from './SharedUI';
 import { VICTIM_COORDS, situationColors } from '../assets/mockData';
 import { styles } from '../theme/styles';

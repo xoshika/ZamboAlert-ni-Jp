@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { ArrowUp, HeartPulse } from 'lucide-react-native';
 import { Mono, PulsingDot } from './SharedUI';
