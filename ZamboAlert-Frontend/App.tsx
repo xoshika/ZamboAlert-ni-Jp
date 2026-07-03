@@ -895,7 +895,7 @@ function PodsView({ nodes }: { nodes: any[] }) {
 
 function LogView({ log, onAddLog }: { log: any[], onAddLog: (type: string, message: string) => void }) {
   const [casualtyCount, setCasualtyCount] = useState("");
-  const [disasterType, setDisasterType] = useState<"Earthquake" | "Fire" | "Flood" | "">("");
+  const [disasterType, setDisasterType] = useState<"Earthquake" | "Fire" | "Flood" | "Landslide" | "">("");
 
   const handleLog = () => {
     if (!disasterType || !casualtyCount) return;
@@ -909,7 +909,7 @@ function LogView({ log, onAddLog }: { log: any[], onAddLog: (type: string, messa
       <View style={styles.logActionCard}>
         <Text style={styles.sectionTitle}>Record Casualties</Text>
         <View style={styles.disasterButtons}>
-          {(["Earthquake", "Fire", "Flood"] as const).map((d) => (
+          {(["Earthquake", "Fire", "Flood", "Landslide"] as const).map((d) => (
             <TouchableOpacity
               key={d}
               style={[styles.disasterBtn, disasterType === d && styles.disasterBtnActive]}
