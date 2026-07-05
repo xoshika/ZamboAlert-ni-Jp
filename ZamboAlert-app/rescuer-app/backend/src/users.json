@@ -1,0 +1,41 @@
+[
+  {
+    "username": "rescuer1",
+    "email": "rescuer1@zamboalert.gov",
+    "passwordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+    "isVerified": true,
+    "mfaEnabled": true,
+    "mfaSecret": "ZB-928A",
+    "failedAttempts": 0
+  },
+  {
+    "username": "demorescuer",
+    "email": "demorescuer@example.com",
+    "passwordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+    "isVerified": false,
+    "emailVerificationCode": "524255",
+    "mfaEnabled": false,
+    "mfaSecret": "ZB-8629",
+    "failedAttempts": 0
+  },
+  {
+    "username": "demo2",
+    "email": "demo2@example.com",
+    "passwordHash": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+    "isVerified": false,
+    "emailVerificationCode": "986417",
+    "mfaEnabled": false,
+    "mfaSecret": "ZB-4781",
+    "failedAttempts": 0
+  },
+  {
+    "username": "testuser",
+    "email": "test@example.com",
+    "passwordHash": "abc123",
+    "isVerified": false,
+    "emailVerificationCode": "663115",
+    "mfaEnabled": false,
+    "mfaSecret": "ZB-7176",
+    "failedAttempts": 0
+  }
+]

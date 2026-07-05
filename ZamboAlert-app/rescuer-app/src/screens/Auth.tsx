@@ -7,7 +7,10 @@ import {
   Platform,
   Linking,
 } from "react-native";
+import Constants from "expo-constants";
 import { ShieldCheck, X } from "lucide-react-native";
+
+const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 import { sha256 } from '../utils/crypto';
 import { UserRecord, SessionDetails, MOCK_USERS_DATABASE } from '../utils/authData';
@@ -61,7 +64,36 @@ const getUserByIdentifier = (identifier: string): UserRecord | undefined => {
 
 const isPasswordValid = (user: UserRecord, password: string) => user.passwordHash === sha256(password);
 
-export const BACKEND_URL = "offline";
+const getBackendUrl = () => {
+  if (EXPO_PUBLIC_BACKEND_URL) {
+    return EXPO_PUBLIC_BACKEND_URL;
+  }
+
+  if (Constants.expoConfig?.hostUri) {
+    const host = Constants.expoConfig.hostUri.split(":").shift();
+    return `http://${host}:5000`;
+  }
+
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:5000";
+  }
+
+  return "http://localhost:5000";
+};
+
+export const BACKEND_URL = getBackendUrl();
+export const DEFAULT_FETCH_TIMEOUT_MS = 8_000;
+
+const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
   const [screen, setScreen] = useState<AuthScreen>("LOGIN");
@@ -123,20 +155,20 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    const user = getUserByIdentifier(username);
-    if (!user) {
-      setLockoutTimeLeft(0);
-      setLockedUser(null);
-      return;
-    }
-
-    clearLockoutIfNeeded(user);
-    if (user.lockoutUntil && user.lockoutUntil > Date.now()) {
-      setLockoutTimeLeft(Math.ceil((user.lockoutUntil - Date.now()) / 1000));
-      setLockedUser(user.username);
-    } else {
-      setLockoutTimeLeft(0);
-      setLockedUser(null);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/lockout-status/${encodeURIComponent(username)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.locked) {
+          setLockoutTimeLeft(data.timeLeft);
+          setLockedUser(data.username);
+        } else {
+          setLockoutTimeLeft(0);
+          setLockedUser(null);
+        }
+      }
+    } catch (err) {
+      console.warn("Could not check lockout status from backend");
     }
   };
 
@@ -149,56 +181,57 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
 
     setLoading(true);
 
-    const user = getUserByIdentifier(usernameInput);
-    if (!user) {
-      setLoading(false);
-      toast.error("Authentication failed", { description: "No account found for that username or email." });
-      return;
-    }
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: usernameInput.trim(),
+          passwordHash: sha256(passwordInput),
+          deviceInfo: `${Platform.OS === "ios" ? "iOS" : "Android"} Rescuer Node`,
+        }),
+      });
 
-    clearLockoutIfNeeded(user);
-    if (user.lockoutUntil && user.lockoutUntil > Date.now()) {
-      setLockoutTimeLeft(Math.ceil((user.lockoutUntil - Date.now()) / 1000));
-      setLockedUser(user.username);
-      setLoading(false);
-      toast.error("Account locked", { description: "Too many failed attempts. Please try again shortly." });
-      return;
-    }
+      const data = await response.json();
 
-    if (!isPasswordValid(user, passwordInput)) {
-      user.failedAttempts = (user.failedAttempts || 0) + 1;
-      if (user.failedAttempts >= MAX_FAILED_ATTEMPTS) {
-        user.lockoutUntil = Date.now() + LOCKOUT_DURATION_MS;
-        setLockoutTimeLeft(Math.ceil(LOCKOUT_DURATION_MS / 1000));
-        setLockedUser(user.username);
-        setLoading(false);
-        toast.error("Account locked", { description: `Too many failed attempts. Try again in ${Math.ceil(LOCKOUT_DURATION_MS / 1000)} seconds.` });
+      if (response.status === 202) {
+        // Verification or MFA required
+        if (data.status === "VERIFICATION_REQUIRED") {
+          setVerifyEmail(data.email);
+          setScreen("EMAIL_VERIFY");
+          toast.info("Verification needed", { description: data.message });
+        } else if (data.status === "MFA_REQUIRED") {
+          setMfaCode("");
+          setMfaUser({
+            username: data.username,
+            email: "",
+            passwordHash: "",
+            isVerified: true,
+            mfaEnabled: true,
+            mfaSecret: "",
+            failedAttempts: 0,
+          });
+          setScreen("MFA_VERIFY");
+          toast.info("MFA required", { description: data.message });
+        }
+      } else if (response.status === 423) {
+        // Locked
+        setLockoutTimeLeft(data.timeLeft || 30);
+        setLockedUser(usernameInput);
+        toast.error("Account locked", { description: data.message || "Too many failed attempts." });
+      } else if (!response.ok) {
+        // Auth failed or other error
+        toast.error("Authentication failed", { description: data.error || data.message || "Invalid credentials." });
       } else {
-        setLoading(false);
-        toast.error("Authentication failed", { description: `${MAX_FAILED_ATTEMPTS - user.failedAttempts} attempts remaining before lockout.` });
+        // Success
+        toast.success("Welcome back!", { description: `Signed in as ${data.user.username}` });
+        onLoginSuccess(data.user, data.session);
       }
-      return;
+    } catch (err) {
+      toast.error("Connection Error", { description: "Could not connect to the security server." });
+    } finally {
+      setLoading(false);
     }
-
-    user.failedAttempts = 0;
-    user.lockoutUntil = undefined;
-    setLoading(false);
-    if (!user.isVerified) {
-      setVerifyEmail(user.email);
-      setScreen("EMAIL_VERIFY");
-      toast.info("Verification needed", { description: "Please verify your email to log in." });
-      return;
-    }
-
-    if (user.mfaEnabled) {
-      setMfaUser(user);
-      setScreen("MFA_VERIFY");
-      toast.info("MFA required", { description: "Enter the code from your authenticator to continue." });
-      return;
-    }
-
-    toast.success("Welcome back!", { description: `Signed in locally as ${user.username}` });
-    onLoginSuccess(user, createOfflineSession(user));
   };
 
   // MFA verification handler
@@ -209,9 +242,32 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    setLoading(false);
-    toast.success("Welcome back!", { description: `Signed in locally as ${mfaUser.username}` });
-    onLoginSuccess(mfaUser, createOfflineSession(mfaUser));
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/verify-mfa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: mfaUser.username,
+          code: mfaCode.trim(),
+          deviceInfo: `${Platform.OS === "ios" ? "iOS" : "Android"} Rescuer Node`,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Welcome back!", { description: `Signed in as ${data.user.username}` });
+        onLoginSuccess(data.user, data.session);
+      } else {
+        toast.error("Verification failed", { description: data.error || "Invalid authenticator code." });
+      }
+    } catch (err) {
+      toast.error("Connection Error", { description: "Could not verify MFA code." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Registration handler
@@ -228,31 +284,40 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    if (getUserByIdentifier(fullName) || MOCK_USERS_DATABASE.some((u) => u.email.toLowerCase() === emailInput.trim().toLowerCase())) {
-      toast.error("Account exists", { description: "That username or email is already registered locally." });
-      return;
-    }
-
     setLoading(true);
 
-    const newUser: UserRecord = {
-      username: fullName,
-      email: emailInput.trim(),
-      passwordHash: sha256(passwordInput),
-      isVerified: true,
-      mfaEnabled: false,
-      mfaSecret: "",
-      failedAttempts: 0,
-    };
+    try {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: fullName,
+          email: emailInput.trim(),
+          passwordHash: sha256(passwordInput),
+        }),
+      });
 
-    MOCK_USERS_DATABASE.push(newUser);
-    setLoading(false);
-    setScreen("LOGIN");
-    setFirstNameInput("");
-    setLastNameInput("");
-    setEmailInput("");
-    setPasswordInput("");
-    toast.success("Account created!", { description: "You can sign in now using the offline local account." });
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Account created!", { description: "Please check your simulated inbox to verify email." });
+        if (data.simulatedInboxUrl) {
+          setEmailMockBanner(data.simulatedInboxUrl);
+        }
+        setVerifyEmail(emailInput.trim());
+        setScreen("EMAIL_VERIFY");
+        setFirstNameInput("");
+        setLastNameInput("");
+        setEmailInput("");
+        setPasswordInput("");
+      } else {
+        toast.error("Registration failed", { description: data.error || "Could not register node." });
+      }
+    } catch (err) {
+      toast.error("Connection Error", { description: "Could not register rescuer profile." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Email verification handler
@@ -262,16 +327,34 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    const user = MOCK_USERS_DATABASE.find((u) => u.email.toLowerCase() === verifyEmail.trim().toLowerCase());
-    if (user) {
-      user.isVerified = true;
-    }
+    setLoading(true);
 
-    setLoading(false);
-    toast.success("Email verified!", { description: "Your account is now active. You may log in." });
-    setScreen("LOGIN");
-    setPasswordInput("");
-    setVerifyCode("");
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/verify-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: verifyEmail.trim(),
+          code: verifyCode.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Email verified!", { description: "Your account is now active. You may log in." });
+        setEmailMockBanner(null);
+        setScreen("LOGIN");
+        setPasswordInput("");
+        setVerifyCode("");
+      } else {
+        toast.error("Verification failed", { description: data.error || "Invalid validation code." });
+      }
+    } catch (err) {
+      toast.error("Connection Error", { description: "Could not verify email." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Email verification code resend helper:
@@ -285,8 +368,11 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       const data = await response.json();
       if (response.ok) {
         toast.info("Code resent", { description: "A new 6-digit code has been dispatched." });
+        if (data.simulatedInboxUrl) {
+          setEmailMockBanner(data.simulatedInboxUrl);
+        }
       } else {
-        toast.error("Error", { description: data.message || "Could not resend verification code." });
+        toast.error("Error", { description: data.error || data.message || "Could not resend verification code." });
       }
     } catch (err) {
       toast.error("Connection Error", { description: "Could not connect to the security server." });
@@ -300,15 +386,31 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    const user = MOCK_USERS_DATABASE.find((u) => u.email.toLowerCase() === forgotEmail.trim().toLowerCase());
-    if (!user) {
-      toast.error("Error", { description: "No account found for that email." });
-      return;
-    }
+    setLoading(true);
 
-    setForgotStep(2);
-    setLoading(false);
-    toast.success("Code sent!", { description: "Recovery mode is available locally without a backend." });
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Code sent!", { description: "Please check your simulated inbox for reset code." });
+        if (data.simulatedInboxUrl) {
+          setEmailMockBanner(data.simulatedInboxUrl);
+        }
+        setForgotStep(2);
+      } else {
+        toast.error("Error", { description: data.error || "No account found for that email." });
+      }
+    } catch (err) {
+      toast.error("Connection Error", { description: "Could not request password reset." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Forgot password reset action
@@ -318,20 +420,37 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       return;
     }
 
-    const user = MOCK_USERS_DATABASE.find((u) => u.email.toLowerCase() === forgotEmail.trim().toLowerCase());
-    if (!user) {
-      toast.error("Reset failed", { description: "No account found for that email." });
-      return;
-    }
+    setLoading(true);
 
-    user.passwordHash = sha256(newPassword);
-    setLoading(false);
-    toast.success("Password reset!", { description: "You can now log in with your new password." });
-    setForgotEmail("");
-    setForgotCode("");
-    setNewPassword("");
-    setForgotStep(1);
-    setScreen("LOGIN");
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          code: forgotCode.trim(),
+          newPasswordHash: sha256(newPassword),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Password reset!", { description: "You can now log in with your new password." });
+        setEmailMockBanner(null);
+        setForgotEmail("");
+        setForgotCode("");
+        setNewPassword("");
+        setForgotStep(1);
+        setScreen("LOGIN");
+      } else {
+        toast.error("Reset failed", { description: data.error || "Could not reset password." });
+      }
+    } catch (err) {
+      toast.error("Connection Error", { description: "Could not reset password." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Clean-up handler when returning to Login from Forgot Password
@@ -437,8 +556,11 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
             mfaCode={mfaCode}
             setMfaCode={setMfaCode}
             handleVerifyMfa={handleVerifyMfa}
+            loading={loading}
             onNavigateToLogin={() => {
               setEmailMockBanner(null);
+              setMfaCode("");
+              setMfaUser(null);
               setScreen("LOGIN");
             }}
           />

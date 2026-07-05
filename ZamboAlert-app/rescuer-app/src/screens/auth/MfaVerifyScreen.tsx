@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Smartphone, ShieldCheck, ArrowLeft } from "lucide-react-native";
 import { styles } from "../Auth.styles";
 import { InputField } from "../../components/FormElements";
@@ -9,6 +9,7 @@ export interface MfaVerifyScreenProps {
   setMfaCode: (text: string) => void;
   handleVerifyMfa: () => void;
   onNavigateToLogin: () => void;
+  loading?: boolean;
 }
 
 export function MfaVerifyScreen({
@@ -16,6 +17,7 @@ export function MfaVerifyScreen({
   setMfaCode,
   handleVerifyMfa,
   onNavigateToLogin,
+  loading = false,
 }: MfaVerifyScreenProps) {
   return (
     <View style={styles.formContainer}>
@@ -38,9 +40,13 @@ export function MfaVerifyScreen({
       <TouchableOpacity
         onPress={handleVerifyMfa}
         style={styles.primaryBtn}
-        disabled={mfaCode.length !== 6}
+        disabled={loading || mfaCode.length !== 6}
       >
-        <Text style={styles.primaryBtnText}>Verify and Login</Text>
+        {loading ? (
+          <ActivityIndicator color="#ffffff" size="small" />
+        ) : (
+          <Text style={styles.primaryBtnText}>Verify and Login</Text>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity
