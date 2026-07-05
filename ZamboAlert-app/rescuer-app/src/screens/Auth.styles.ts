@@ -1,8 +1,6 @@
 import { StyleSheet, Platform } from 'react-native';
 
-export // ── StyleSheet Definitions ───────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
+export const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: "center",

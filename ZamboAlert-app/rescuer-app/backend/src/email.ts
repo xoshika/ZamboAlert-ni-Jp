@@ -3,10 +3,22 @@ import nodemailer from 'nodemailer';
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 function hasRealSmtpConfig() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const smtpUrl = process.env.SMTP_URL?.trim();
+  if (smtpUrl) {
+    return true;
+  }
 
-  return Boolean(user && pass && !/your-/.test(user) && !/your-/.test(pass) && !user.includes('example') && !pass.includes('password'));
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+
+  return Boolean(
+    user &&
+    pass &&
+    !/your-/.test(user) &&
+    !/your-/.test(pass) &&
+    !user.includes('example') &&
+    !pass.includes('password')
+  );
 }
 
 function getTransporter() {
@@ -14,8 +26,14 @@ function getTransporter() {
     return transporter;
   }
 
+  const smtpUrl = process.env.SMTP_URL?.trim();
+  if (smtpUrl) {
+    transporter = nodemailer.createTransport(smtpUrl);
+    return transporter;
+  }
+
   if (!hasRealSmtpConfig()) {
-    console.warn('SMTP credentials are not configured. Email delivery is disabled.');
+    console.warn('SMTP credentials are not configured. Set real SMTP_USER/SMTP_PASS or SMTP_URL in your deployment environment.');
     return null;
   }
 
@@ -38,7 +56,7 @@ function getTransporter() {
 export async function sendVerificationEmail(to: string, code: string, purpose: 'verification' | 'reset') {
   const mailer = getTransporter();
   if (!mailer) {
-    throw new Error('SMTP credentials are not configured. Set SMTP_USER and SMTP_PASS in backend/.env.');
+    throw new Error('SMTP credentials are not configured. Set real SMTP_USER/SMTP_PASS or SMTP_URL in your deployment environment.');
   }
 
   const subject = purpose === 'reset'
