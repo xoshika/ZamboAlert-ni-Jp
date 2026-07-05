@@ -191,19 +191,23 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
 
   db.createUser(newUser);
 
-  void sendVerificationEmail(email, verificationCode, 'verification')
-    .then(() => {
-      console.log(`Verification email queued for ${email}`);
-    })
-    .catch((error) => {
-      console.error('Failed to send verification email', error);
+  try {
+    await sendVerificationEmail(email, verificationCode, 'verification');
+    res.status(201).json({
+      message: 'Registration successful. A verification code has been sent to your email.',
+      email: newUser.email,
+      delivery: 'email',
+      debugCode: verificationCode
     });
-
-  res.status(201).json({
-    message: 'Registration successful. A verification code has been sent to your email.',
-    email: newUser.email,
-    delivery: 'email'
-  });
+  } catch (error) {
+    console.error('Failed to send verification email', error);
+    res.status(201).json({
+      message: 'Registration successful. Verification email could not be delivered automatically.',
+      email: newUser.email,
+      delivery: 'pending',
+      debugCode: verificationCode
+    });
+  }
 });
 
 // Verify Email

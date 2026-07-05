@@ -81,8 +81,29 @@ const getBackendUrl = () => {
   return "http://localhost:5000";
 };
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return typeof error === "string" ? error : "Unknown error";
+};
+
+const parseJsonResponse = async (response: Response) => {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+};
+
 export const BACKEND_URL = getBackendUrl();
-export const DEFAULT_FETCH_TIMEOUT_MS = 8_000;
+export const DEFAULT_FETCH_TIMEOUT_MS = 25_000;
 
 const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) => {
   const controller = new AbortController();
@@ -297,7 +318,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
         }),
       });
 
-      const data = await response.json();
+      const data = await parseJsonResponse(response);
 
       if (response.ok) {
         toast.success("Account created!", { description: "Please check your simulated inbox to verify email." });
@@ -311,10 +332,15 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
         setEmailInput("");
         setPasswordInput("");
       } else {
-        toast.error("Registration failed", { description: data.error || "Could not register node." });
+        toast.error("Registration failed", { description: data.error || data.message || "Could not register node." });
       }
     } catch (err) {
-      toast.error("Connection Error", { description: "Could not register rescuer profile." });
+      console.error("Registration request failed", err);
+      const errorText = getErrorMessage(err);
+      const description = errorText.includes("aborted") || errorText.includes("timeout")
+        ? "The backend may still be waking up. Please wait a moment and try again."
+        : `Could not register rescuer profile. ${errorText}`;
+      toast.error("Connection Error", { description });
     } finally {
       setLoading(false);
     }
