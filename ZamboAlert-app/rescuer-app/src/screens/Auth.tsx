@@ -9,6 +9,8 @@ import {
 } from "react-native";
 import Constants from "expo-constants";
 import { ShieldCheck, X } from "lucide-react-native";
+import { auth } from '../utils/firebaseConfig';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 
 const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -196,19 +198,23 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
   // Login handler
   const handleLogin = async () => {
     if (!usernameInput.trim() || !passwordInput) {
-      toast.error("Missing credentials", { description: "Please enter your username/email and password." });
+      toast.error("Missing credentials", { description: "Please enter your email and password." });
       return;
     }
 
     setLoading(true);
 
     try {
+      const userCredential = await signInWithEmailAndPassword(auth, usernameInput.trim(), passwordInput);
+      const user = userCredential.user;
+      
+      const idToken = await user.getIdToken(true);
+
       const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          identifier: usernameInput.trim(),
-          passwordHash: sha256(passwordInput),
+          idToken,
           deviceInfo: `${Platform.OS === "ios" ? "iOS" : "Android"} Rescuer Node`,
         }),
       });
@@ -218,7 +224,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       if (response.status === 202) {
         // Verification or MFA required
         if (data.status === "VERIFICATION_REQUIRED") {
-          setVerifyEmail(data.email);
+          setVerifyEmail(user.email || usernameInput.trim());
           setScreen("EMAIL_VERIFY");
           toast.info("Verification needed", { description: data.message });
         } else if (data.status === "MFA_REQUIRED") {
@@ -248,8 +254,9 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
         toast.success("Welcome back!", { description: `Signed in as ${data.user.username}` });
         onLoginSuccess(data.user, data.session);
       }
-    } catch (err) {
-      toast.error("Connection Error", { description: "Could not connect to the security server." });
+    } catch (err: any) {
+      const errorMsg = err.code || err.message || "Could not connect to the security server.";
+      toast.error("Authentication Error", { description: errorMsg });
     } finally {
       setLoading(false);
     }
@@ -308,39 +315,22 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
     setLoading(true);
 
     try {
-      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: fullName,
-          email: emailInput.trim(),
-          passwordHash: sha256(passwordInput),
-        }),
-      });
+      const userCredential = await createUserWithEmailAndPassword(auth, emailInput.trim(), passwordInput);
+      const user = userCredential.user;
+      
+      await updateProfile(user, { displayName: fullName });
+      await sendEmailVerification(user);
 
-      const data = await parseJsonResponse(response);
-
-      if (response.ok) {
-        toast.success("Account created!", { description: "Please check your simulated inbox to verify email." });
-        if (data.simulatedInboxUrl) {
-          setEmailMockBanner(data.simulatedInboxUrl);
-        }
-        setVerifyEmail(emailInput.trim());
-        setScreen("EMAIL_VERIFY");
-        setFirstNameInput("");
-        setLastNameInput("");
-        setEmailInput("");
-        setPasswordInput("");
-      } else {
-        toast.error("Registration failed", { description: data.error || data.message || "Could not register node." });
-      }
-    } catch (err) {
+      toast.success("Account created!", { description: "Please check your inbox to verify your email." });
+      setVerifyEmail(emailInput.trim());
+      setScreen("EMAIL_VERIFY");
+      setFirstNameInput("");
+      setLastNameInput("");
+      setEmailInput("");
+      setPasswordInput("");
+    } catch (err: any) {
       console.error("Registration request failed", err);
-      const errorText = getErrorMessage(err);
-      const description = errorText.includes("aborted") || errorText.includes("timeout")
-        ? "The backend may still be waking up. Please wait a moment and try again."
-        : `Could not register rescuer profile. ${errorText}`;
-      toast.error("Connection Error", { description });
+      toast.error("Registration Error", { description: err.message || "Could not register rescuer profile." });
     } finally {
       setLoading(false);
     }
@@ -348,36 +338,23 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
 
   // Email verification handler
   const handleVerifyEmail = async () => {
-    if (!verifyCode.trim() || verifyCode.trim().length < 6) {
-      toast.error("Verification failed", { description: "Please enter the 6-digit code." });
-      return;
-    }
-
     setLoading(true);
-
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/verify-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: verifyEmail.trim(),
-          code: verifyCode.trim(),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success("Email verified!", { description: "Your account is now active. You may log in." });
-        setEmailMockBanner(null);
-        setScreen("LOGIN");
-        setPasswordInput("");
-        setVerifyCode("");
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        if (auth.currentUser.emailVerified) {
+          toast.success("Email verified!", { description: "Your account is now active. You may log in." });
+          setScreen("LOGIN");
+          setPasswordInput("");
+          setVerifyCode("");
+        } else {
+          toast.error("Not verified", { description: "Your email is still not verified. Please check your inbox and click the link." });
+        }
       } else {
-        toast.error("Verification failed", { description: data.error || "Invalid validation code." });
+        toast.error("Error", { description: "You are not logged in. Please try logging in first to check verification status." });
       }
     } catch (err) {
-      toast.error("Connection Error", { description: "Could not verify email." });
+      toast.error("Connection Error", { description: "Could not verify email status." });
     } finally {
       setLoading(false);
     }
@@ -386,26 +363,18 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
   // Email verification code resend helper:
   const handleResendCode = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/resend-code`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: verifyEmail }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        toast.info("Code resent", { description: "A new 6-digit code has been dispatched." });
-        if (data.simulatedInboxUrl) {
-          setEmailMockBanner(data.simulatedInboxUrl);
-        }
+      if (auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+        toast.info("Email resent", { description: "A new verification link has been dispatched." });
       } else {
-        toast.error("Error", { description: data.error || data.message || "Could not resend verification code." });
+        toast.error("Error", { description: "You must be logged in to resend the code." });
       }
-    } catch (err) {
-      toast.error("Connection Error", { description: "Could not connect to the security server." });
+    } catch (err: any) {
+      toast.error("Error", { description: err.message || "Could not resend verification email." });
     }
   };
 
-  // Forgot password code request handler
+  // Forgot password link request handler
   const handleForgotRequest = async () => {
     if (!forgotEmail.trim()) {
       toast.error("Email required", { description: "Please enter your registered email address." });
@@ -415,65 +384,12 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: forgotEmail.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success("Code sent!", { description: "Please check your simulated inbox for reset code." });
-        if (data.simulatedInboxUrl) {
-          setEmailMockBanner(data.simulatedInboxUrl);
-        }
-        setForgotStep(2);
-      } else {
-        toast.error("Error", { description: data.error || "No account found for that email." });
-      }
-    } catch (err) {
-      toast.error("Connection Error", { description: "Could not request password reset." });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Forgot password reset action
-  const handleForgotReset = async () => {
-    if (newPasswordStats.score < 4) {
-      toast.error("Weak password", { description: "New password must meet the Strong Password Policy." });
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: forgotEmail.trim(),
-          code: forgotCode.trim(),
-          newPasswordHash: sha256(newPassword),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        toast.success("Password reset!", { description: "You can now log in with your new password." });
-        setEmailMockBanner(null);
-        setForgotEmail("");
-        setForgotCode("");
-        setNewPassword("");
-        setForgotStep(1);
-        setScreen("LOGIN");
-      } else {
-        toast.error("Reset failed", { description: data.error || "Could not reset password." });
-      }
-    } catch (err) {
-      toast.error("Connection Error", { description: "Could not reset password." });
+      await sendPasswordResetEmail(auth, forgotEmail.trim());
+      toast.success("Link sent!", { description: "Please check your inbox for the password reset link." });
+      // User will reset password on the Firebase web UI, so we can send them back to login
+      handleNavigateToLoginFromForgot();
+    } catch (err: any) {
+      toast.error("Error", { description: err.message || "Could not request password reset." });
     } finally {
       setLoading(false);
     }
@@ -596,17 +512,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
           <ForgotPasswordScreen
             forgotEmail={forgotEmail}
             setForgotEmail={setForgotEmail}
-            forgotCode={forgotCode}
-            setForgotCode={setForgotCode}
-            forgotStep={forgotStep}
-            setForgotStep={setForgotStep}
-            newPassword={newPassword}
-            setNewPassword={setNewPassword}
-            showNewPassword={showNewPassword}
-            setShowNewPassword={setShowNewPassword}
-            newPasswordStats={newPasswordStats}
             handleForgotRequest={handleForgotRequest}
-            handleForgotReset={handleForgotReset}
             loading={loading}
             onNavigateToLogin={handleNavigateToLoginFromForgot}
           />

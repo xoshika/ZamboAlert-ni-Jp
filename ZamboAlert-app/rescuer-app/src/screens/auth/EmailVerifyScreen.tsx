@@ -16,8 +16,8 @@ export interface EmailVerifyScreenProps {
 
 export function EmailVerifyScreen({
   verifyEmail,
-  verifyCode,
-  setVerifyCode,
+  verifyCode, // No longer used, kept for prop compatibility
+  setVerifyCode, // No longer used
   handleVerifyEmail,
   handleResendCode,
   loading,
@@ -28,26 +28,18 @@ export function EmailVerifyScreen({
       <View style={styles.instructionCard}>
         <Mail size={20} color="#2563eb" style={{ marginBottom: 8 }} />
         <Text style={styles.instructionText}>
-          For security reasons, we have dispatched a 6-digit confirmation code to:{"\n"}
+          For security reasons, we have dispatched a verification link to:{"\n"}
           <Text style={styles.textHighlight}>{verifyEmail}</Text>
+          {"\n\n"}Please click the link in the email to activate your account.
         </Text>
       </View>
-
-      <InputField
-        icon={Key}
-        placeholder="Enter 6-digit Email Code"
-        value={verifyCode}
-        onChangeText={setVerifyCode}
-        keyboardType="numeric"
-        maxLength={6}
-      />
 
       <TouchableOpacity
         onPress={handleVerifyEmail}
         style={styles.primaryBtn}
-        disabled={loading || verifyCode.length !== 6}
+        disabled={loading}
       >
-        <Text style={styles.primaryBtnText}>Activate Rescuer Account</Text>
+        <Text style={styles.primaryBtnText}>I have verified my email</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -55,7 +47,7 @@ export function EmailVerifyScreen({
         style={styles.resendBtn}
       >
         <RefreshCw size={12} color="#2563eb" style={{ marginRight: 6 }} />
-        <Text style={styles.resendBtnText}>Resend verification code</Text>
+        <Text style={styles.resendBtnText}>Resend verification email</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

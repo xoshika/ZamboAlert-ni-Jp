@@ -37,5 +37,15 @@
     "mfaEnabled": false,
     "mfaSecret": "ZB-7176",
     "failedAttempts": 0
+  },
+  {
+    "username": "John Paul Enriquez",
+    "email": "xoshikafukanawa@gmail.com",
+    "passwordHash": "faf353cb238ac92f0bfa541a847394b6f2d05c6b17ae495630aad97870a84ded",
+    "isVerified": false,
+    "emailVerificationCode": "875299",
+    "mfaEnabled": false,
+    "mfaSecret": "ZB-2885",
+    "failedAttempts": 0
   }
 ]
