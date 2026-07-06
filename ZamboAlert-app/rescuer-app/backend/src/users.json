@@ -47,5 +47,14 @@
     "mfaEnabled": false,
     "mfaSecret": "ZB-2885",
     "failedAttempts": 0
+  },
+  {
+    "username": "enriquezjohnpaul908_fLGg",
+    "email": "enriquezjohnpaul908@gmail.com",
+    "passwordHash": "",
+    "isVerified": true,
+    "mfaEnabled": false,
+    "mfaSecret": "",
+    "failedAttempts": 0
   }
 ]
