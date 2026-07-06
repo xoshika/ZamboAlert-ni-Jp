@@ -17,8 +17,6 @@ export const initDatabase = async () => {
       floor INTEGER,
       signalStrength INTEGER,
       situation TEXT,
-      heartRate INTEGER,
-      temp REAL,
       lastPing TEXT
     );
     CREATE TABLE IF NOT EXISTS mesh_nodes (
@@ -48,8 +46,8 @@ export const getDatabase = () => db;
 export const insertVictim = async (victim: any) => {
   if (!db) return;
   const result = await db.runAsync(
-    'INSERT OR REPLACE INTO victims (id, label, distance, bearing, floor, signalStrength, situation, heartRate, temp, lastPing) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [victim.id, victim.label, victim.distance, victim.bearing, victim.floor, victim.signalStrength, victim.situation, victim.heartRate, victim.temp, victim.lastPing]
+    'INSERT OR REPLACE INTO victims (id, label, distance, bearing, floor, signalStrength, situation, lastPing) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [victim.id, victim.label, victim.distance, victim.bearing, victim.floor, victim.signalStrength, victim.situation, victim.lastPing]
   );
   return result.lastInsertRowId;
 };

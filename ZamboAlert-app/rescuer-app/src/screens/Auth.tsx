@@ -179,7 +179,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
     }
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/lockout-status/${encodeURIComponent(username)}`);
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/lockout-status/${encodeURIComponent(username)}`);
       if (response.ok) {
         const data = await response.json();
         if (data.locked) {
@@ -210,7 +210,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
       
       const idToken = await user.getIdToken(true);
 
-      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -273,7 +273,7 @@ export function AuthContainer({ onLoginSuccess, toast }: AuthContainerProps) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/verify-mfa`, {
+      const response = await fetchWithTimeout(`${BACKEND_URL}/api/auth/verify-mfa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

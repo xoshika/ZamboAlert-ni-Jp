@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
-import { ArrowUp, HeartPulse } from 'lucide-react-native';
+import { ArrowUp } from 'lucide-react-native';
 import { Mono, PulsingDot } from './SharedUI';
 import { situationColors } from '../assets/mockData';
 import { styles } from '../theme/styles';
@@ -201,20 +201,6 @@ export function RadarView({
                 </View>
 
                 <View style={styles.victimCardRight}>
-                  {v.heartRate && (
-                    <View style={styles.heartRateContainer}>
-                      <HeartPulse
-                        size={12}
-                        color={
-                          v.situation === "trapped" ? "#dc2626" :
-                          v.situation === "injured" ? "#d97706" :
-                          v.situation === "safe" ? "#15803d" :
-                          "#000000"
-                        }
-                      />
-                      <Mono style={styles.heartRateText}>{v.heartRate}</Mono>
-                    </View>
-                  )}
                   <View style={[styles.miniBadge, { backgroundColor: config.bg }]}>
                     <Text style={[styles.miniBadgeText, { color: config.text }]}>
                       {v.situation.toUpperCase()}
@@ -222,29 +208,6 @@ export function RadarView({
                   </View>
                 </View>
               </View>
-
-              {v.heartRate && isSelected && (
-                <View style={styles.victimDetails}>
-                  <View style={styles.detailCol}>
-                    <Text style={styles.detailLabel}>Heart Rate</Text>
-                    <Mono style={[styles.detailVal, (v.situation === "trapped" || v.situation === "injured") ? styles.textRed : styles.textBlack]}>
-                      {v.heartRate} <Text style={styles.detailUnit}>bpm</Text>
-                    </Mono>
-                  </View>
-                  <View style={styles.detailCol}>
-                    <Text style={styles.detailLabel}>Temp</Text>
-                    <Mono style={styles.detailVal}>
-                      {v.temp}° <Text style={styles.detailUnit}>C</Text>
-                    </Mono>
-                  </View>
-                  <View style={styles.detailCol}>
-                    <Text style={styles.detailLabel}>RSSI</Text>
-                    <Mono style={styles.detailVal}>
-                      -{100 - v.signalStrength} <Text style={styles.detailUnit}>dBm</Text>
-                    </Mono>
-                  </View>
-                </View>
-              )}
             </TouchableOpacity>
           );
         })}

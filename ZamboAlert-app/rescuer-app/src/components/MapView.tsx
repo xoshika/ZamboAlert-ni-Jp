@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Svg, { Circle, Line, Rect, G } from 'react-native-svg';
-import { Navigation, ShieldAlert, HeartPulse, ChevronRight, MapPin, X, Layers, LifeBuoy, AlertTriangle } from 'lucide-react-native';
+import { Navigation, ShieldAlert, ChevronRight, MapPin, X, Layers, LifeBuoy, AlertTriangle } from 'lucide-react-native';
 import { Mono, PulsingDot } from './SharedUI';
 import { VICTIM_COORDS, situationColors } from '../assets/mockData';
 import { styles } from '../theme/styles';
@@ -356,33 +356,6 @@ export function MapView({
             <Text style={styles.modalSubtitle}>
               Select your emergency status. This will alert all other active respondents.
             </Text>
-
-            {/* Floor Selection inside SOS Modal */}
-            <Mono style={[styles.floorCardTitle, { marginBottom: 8 }]}>SELECT YOUR CURRENT FLOOR</Mono>
-            <View style={[styles.floorBtnRow, { marginBottom: 20 }]}>
-              {["-2", "-1", "G", "+1", "+2"].map((f) => {
-                const isSelected = f === selectedFloor;
-                return (
-                  <TouchableOpacity
-                    key={f}
-                    disabled={isNavigating}
-                    onPress={() => {
-                      if (isNavigating) return;
-                      setSelectedFloor(f);
-                    }}
-                    style={[
-                      styles.floorBtn,
-                      isSelected ? styles.floorBtnSelected : styles.floorBtnNormal,
-                      isNavigating ? styles.disabledBtn : null
-                    ]}
-                  >
-                    <Mono style={[styles.floorBtnText, isSelected ? styles.textWhite : styles.textMuted]}>
-                      {f}
-                    </Mono>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
 
             {/* Trapped Option */}
             <TouchableOpacity
