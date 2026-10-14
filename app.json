@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "9a79f9ab-e23a-4725-ab2c-fd8ef7278057"
+      }
+    },
+    "android": {
+      "package": "com.jeypii.zamboalertroot"
+    }
+  }
+}

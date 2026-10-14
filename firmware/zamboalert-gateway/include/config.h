@@ -32,14 +32,14 @@
 #define FORWARD_VIA_MQTT 0
 
 // ---------- Wi-Fi (barangay hall local network) ----------
-#define WIFI_SSID     "No"
-#define WIFI_PASSWORD "NoInternet.2024"
+#define WIFI_SSID     "No Internet"
+#define WIFI_PASSWORD "Unding.2007"
 
 // ---------- HTTP target (only used if FORWARD_VIA_HTTP is 1) ----------
-#define SERVER_URL "http://192.168.254.111:3000/api/telemetry"
+#define SERVER_URL "http://192.168.1.17:3000/api/telemetry"
 #define GATEWAY_API_KEY "c44cd9714f6d56f4f1d31e86c6e6876f5c5055f7635bd9e7bcb2087392016e04"
 
 // ---------- MQTT target (only used if FORWARD_VIA_MQTT is 1) ----------
-#define MQTT_BROKER_HOST "192.168.1.100"
+#define MQTT_BROKER_HOST "192.168.1.17"
 #define MQTT_BROKER_PORT 1883
 #define MQTT_TOPIC "zamboalert/telemetry"

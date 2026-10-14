@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "start": "expo start --lan",
-    "start:ip": "cross-env REACT_NATIVE_PACKAGER_HOSTNAME=192.168.254.117 expo start --lan",
+    "start:ip": "cross-env REACT_NATIVE_PACKAGER_HOSTNAME=192.168.1.17 expo start --lan",
     "tunnel": "expo start --tunnel -c",
     "clear": "expo start -c",
     "android": "expo run:android",

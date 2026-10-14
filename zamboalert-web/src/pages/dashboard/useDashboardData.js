@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { INITIAL_ALERTS, INITIAL_RESCUERS, useNow } from "./dashboardData";
-import { apiFetch } from "./dashboardApi";
+import { apiFetch, fetchCitizenSos, fetchTelemetry } from "./dashboardApi";
 
 export function useDashboardData() {
   const navigate = useNavigate();
@@ -171,11 +171,52 @@ export function useDashboardData() {
 
   const fetchPods = async () => {
     try {
-      const response = await apiFetch("/api/telemetry");
+      const response = await fetchTelemetry();
       if (!response.ok) throw new Error(`Pod telemetry request failed: ${response.status}`);
       setPods(await response.json());
     } catch (error) {
       console.error("Failed to fetch pod telemetry", error);
+    }
+  };
+
+  const fetchLiveCitizenSos = async () => {
+    try {
+      const response = await fetchCitizenSos();
+      if (!response.ok) throw new Error(`Citizen SOS request failed: ${response.status}`);
+      const reports = await response.json();
+      if (!Array.isArray(reports)) return;
+
+      setAlerts((previous) => {
+        const localOverrides = new Map(
+          previous
+            .filter((alert) => alert.status === "assigned" || alert.status === "resolved")
+            .map((alert) => [alert.id, alert]),
+        );
+
+        return reports.map((report) => {
+          const id = report.id || `SOS-${report.clientId}`;
+          const prior = localOverrides.get(id);
+          const received = report.receivedAt ? new Date(report.receivedAt) : new Date();
+          const disaster = (report.disasterType || "emergency").toUpperCase();
+          return {
+            id,
+            clientId: report.clientId,
+            name: report.name || "Citizen SOS",
+            lat: report.lat,
+            lng: report.lng,
+            latitude: report.lat,
+            longitude: report.lng,
+            status: prior?.status || "unassigned",
+            assignedTo: prior?.assignedTo,
+            time: received.toLocaleTimeString("en-PH", { hour12: false }),
+            zone: disaster,
+            message: `${disaster} distress — phone GPS`,
+            battery: "--",
+          };
+        });
+      });
+    } catch (error) {
+      console.error("Failed to fetch citizen SOS", error);
     }
   };
 
@@ -185,6 +226,7 @@ export function useDashboardData() {
     fetchHouseholds();
     fetchIncidents();
     fetchPods();
+    fetchLiveCitizenSos();
 
     const interval = setInterval(() => {
       fetchCasualtyLogs();
@@ -197,7 +239,10 @@ export function useDashboardData() {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(fetchPods, 3000);
+    const interval = setInterval(() => {
+      fetchPods();
+      fetchLiveCitizenSos();
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 

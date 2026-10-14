@@ -22,6 +22,7 @@ import {
   MessageRescuerModal,
   DispatchModal,
 } from "./DashboardModals";
+import { apiFetch, ADMIN_API_PORTS } from "./dashboardApi";
 
 export default function DashboardContent({
   now,
@@ -167,7 +168,13 @@ export default function DashboardContent({
           <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500">
             <span className="inline-flex items-center gap-1.5">
               <PingDot active={pods.length > 0} />
-              {pods.length > 0 ? `${pods.length} live pod${pods.length === 1 ? "" : "s"}` : "Waiting for live telemetry"}
+              {(() => {
+                const activeSos = alerts.filter((a) => a.status !== "resolved").length;
+                const parts = [];
+                if (activeSos > 0) parts.push(`${activeSos} phone SOS`);
+                if (pods.length > 0) parts.push(`${pods.length} live pod${pods.length === 1 ? "" : "s"}`);
+                return parts.length > 0 ? parts.join(" · ") : "Waiting for live telemetry";
+              })()}
             </span>
           </div>
         </div>
@@ -374,7 +381,7 @@ export default function DashboardContent({
           <p className="text-xs text-slate-500 mt-0.5">Historical disaster events, response times, and evacuation records</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.open("http://localhost:5000/api/incidents/export", "_blank")} className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2">
+          <button onClick={() => window.open(`http://localhost:${ADMIN_API_PORTS[0]}/api/incidents/export`, "_blank")} className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2">
             <Download size={13} />
             <span>Export CSV</span>
           </button>
@@ -523,12 +530,12 @@ export default function DashboardContent({
               </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={async () => {
-                  await fetch(`http://localhost:5000/api/rescuers/verify/${rescuer.dbId}`, { method: "POST" });
+                  await apiFetch(`/api/rescuers/verify/${rescuer.dbId}`, { method: "POST" });
                   fetchRescuers();
                 }} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer">Approve & Verify</button>
                 <button onClick={async () => {
                   if (window.confirm("Reject this rescuer registration?")) {
-                    await fetch(`http://localhost:5000/api/rescuers/${rescuer.dbId}`, { method: "DELETE" });
+                    await apiFetch(`/api/rescuers/${rescuer.dbId}`, { method: "DELETE" });
                     fetchRescuers();
                   }
                 }} className="py-2.5 px-4 border border-slate-200 hover:bg-red-50 hover:text-red-700 text-slate-600 font-bold text-xs rounded-xl transition-colors cursor-pointer">Reject</button>

@@ -36,8 +36,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "0f93e993-8df6-4415-8075-0bfb06addb8e"
+        "projectId": "d24273e9-1a55-4211-9fb7-0a539ff29e95"
       }
-    }
+    },
+    "owner": "jeypii"
   }
 }

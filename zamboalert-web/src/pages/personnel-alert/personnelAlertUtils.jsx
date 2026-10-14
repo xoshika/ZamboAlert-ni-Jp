@@ -1,4 +1,4 @@
-export const API = "http://localhost:5000";
+export const API = `http://localhost:${import.meta.env.VITE_API_PORT || 5000}`;
 
 export function alertLevelStyle(level = "") {
   if (level.includes("CRITICAL")) {

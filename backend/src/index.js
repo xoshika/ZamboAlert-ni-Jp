@@ -149,6 +149,96 @@ app.get('/api/telemetry', (req, res) => {
   );
 });
 
+// ── Citizen phone SOS (HTTP GPS for web map — LAN or cloud) ───────────────────
+const CITIZEN_SOS_TTL_MS = 10 * 60 * 1000;
+const DISASTER_TYPES = new Set(['earthquake', 'flood', 'fire', 'landslide']);
+
+app.post('/api/sos', (req, res) => {
+  const body = req.body || {};
+  const validNumber = (value, min, max) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+
+  const clientId = typeof body.clientId === 'string' ? body.clientId.trim().slice(0, 64) : '';
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : 'Citizen';
+  const disasterType =
+    typeof body.disasterType === 'string' ? body.disasterType.trim().toLowerCase() : '';
+
+  if (
+    !clientId ||
+    !validNumber(body.lat, -90, 90) ||
+    !validNumber(body.lng, -180, 180) ||
+    !DISASTER_TYPES.has(disasterType)
+  ) {
+    return res.status(400).json({ message: 'Invalid citizen SOS payload.' });
+  }
+
+  try {
+    const db = readDB();
+    const list = Array.isArray(db.citizenSos) ? db.citizenSos : [];
+    const receivedAt = new Date().toISOString();
+    const report = {
+      id: `SOS-${clientId.slice(0, 8).toUpperCase()}`,
+      clientId,
+      name: name || 'Citizen',
+      lat: body.lat,
+      lng: body.lng,
+      disasterType,
+      status: 'active',
+      receivedAt,
+    };
+    const existingIndex = list.findIndex((item) => item.clientId === clientId);
+    if (existingIndex === -1) {
+      list.push(report);
+    } else {
+      list[existingIndex] = report;
+    }
+    db.citizenSos = list;
+    writeDB(db);
+    return res.status(202).json({ message: 'Citizen SOS received.', id: report.id, clientId });
+  } catch (error) {
+    console.error('Failed to store citizen SOS:', error.message);
+    return res.status(500).json({ message: 'Failed to store citizen SOS.' });
+  }
+});
+
+app.get('/api/sos', (req, res) => {
+  const cutoff = Date.now() - CITIZEN_SOS_TTL_MS;
+  const list = readDB().citizenSos;
+  const reports = Array.isArray(list) ? list : [];
+  return res.json(
+    reports
+      .filter((report) => {
+        if (report.status !== 'active') return false;
+        const receivedAt = Date.parse(report.receivedAt);
+        return Number.isFinite(receivedAt) && receivedAt >= cutoff;
+      })
+      .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)),
+  );
+});
+
+app.delete('/api/sos', (req, res) => {
+  const body = req.body || {};
+  const clientId =
+    (typeof body.clientId === 'string' && body.clientId.trim()) ||
+    (typeof req.query.clientId === 'string' && req.query.clientId.trim()) ||
+    '';
+
+  if (!clientId) {
+    return res.status(400).json({ message: 'clientId is required.' });
+  }
+
+  try {
+    const db = readDB();
+    const list = Array.isArray(db.citizenSos) ? db.citizenSos : [];
+    db.citizenSos = list.filter((item) => item.clientId !== clientId);
+    writeDB(db);
+    return res.status(200).json({ message: 'Citizen SOS cleared.', clientId });
+  } catch (error) {
+    console.error('Failed to clear citizen SOS:', error.message);
+    return res.status(500).json({ message: 'Failed to clear citizen SOS.' });
+  }
+});
+
 // ── Custom SHA-256 Hashing Algorithm ─────────────────────────────────────────
 function sha256(ascii) {
   function rightRotate(value, amount) {
@@ -611,6 +701,24 @@ app.post('/api/admin/rescuers/:id/approve', (req, res) => {
   writeDB(db);
 
   return res.json({ success: true, message: `Rescuer ${user.firstName} approved successfully.` });
+});
+
+// Approve a rescuer by email (called by web backend to sync the two DBs)
+app.post('/api/admin/rescuers/approve-by-email', (req, res) => {
+  const { email } = req.body;
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ error: 'email is required.' });
+  }
+  const db = readDB();
+  const user = db.users.find(
+    u => u.email.toLowerCase() === email.trim().toLowerCase() && u.role === 'rescuer'
+  );
+  if (!user) {
+    return res.status(404).json({ error: 'Rescuer account not found in mobile DB.' });
+  }
+  user.isRescuerVerified = true;
+  writeDB(db);
+  return res.json({ success: true, message: `Rescuer ${user.firstName} approved and synced from web backend.` });
 });
 
 // Reject/Revoke a rescuer verification

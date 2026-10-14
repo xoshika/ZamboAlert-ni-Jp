@@ -8,6 +8,7 @@ import AccountTab from "./AccountTab";
 import ActivityTab from "./ActivityTab";
 import RescuersTab from "./RescuersTab";
 import LocationTab from "./LocationTab";
+import { apiFetch } from "../dashboard/dashboardApi";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
@@ -73,7 +74,7 @@ export default function SettingsPage() {
     else if (key === "allowGuestSOS") dbKey = "allow_guest_sos";
 
     try {
-      const response = await fetch("http://localhost:5000/api/settings", {
+      const response = await apiFetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key: dbKey, value: newValue }),
@@ -238,7 +239,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const fetchBackendSettings = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/settings");
+        const response = await apiFetch("/api/settings");
         if (response.ok) {
           const data = await response.json();
           setRules((prev) => ({
@@ -313,7 +314,7 @@ export default function SettingsPage() {
   const fetchRescuers = async () => {
     setIsFetchingRescuers(true);
     try {
-      const response = await fetch("http://localhost:5000/api/rescuers");
+      const response = await apiFetch("/api/rescuers");
       if (response.ok) {
         const data = await response.json();
         setDbRescuers(data);
@@ -327,7 +328,7 @@ export default function SettingsPage() {
 
   const handleVerifyRescuer = async (id) => {
     try {
-      const response = await fetch(`http://localhost:5000/api/rescuers/verify/${id}`, {
+      const response = await apiFetch(`/api/rescuers/verify/${id}`, {
         method: "POST",
       });
       if (response.ok) {
@@ -351,7 +352,7 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5000/api/rescuers/${id}`, {
+      const response = await apiFetch(`/api/rescuers/${id}`, {
         method: "DELETE",
       });
       if (response.ok) {

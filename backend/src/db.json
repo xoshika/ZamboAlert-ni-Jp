@@ -98,6 +98,28 @@
       "loraRssi": -80,
       "loraSnr": 13.5,
       "receivedAt": "2026-10-14T07:06:48.568Z"
+    },
+    {
+      "nodeId": "AABBCC01",
+      "gatewayId": "GW-HEALTH",
+      "seq": 42,
+      "msgType": 0,
+      "fix": true,
+      "lat": 6.9215,
+      "lng": 122.0791,
+      "gatewayLat": 6.9214,
+      "gatewayLng": 122.079,
+      "sats": 8,
+      "bleVictims": 1,
+      "nearestRssi": -70,
+      "nearestVictimId": "VIC00001",
+      "victimStatus": 2,
+      "hopCount": 1,
+      "uptime": 120,
+      "loraRssi": -80,
+      "loraSnr": 7.5,
+      "receivedAt": "2026-10-14T19:48:10.197Z"
     }
-  ]
+  ],
+  "citizenSos": []
 }

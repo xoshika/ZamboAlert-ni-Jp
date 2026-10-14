@@ -1,9 +1,11 @@
-
 // src/context/AppStateContext.tsx
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Alert, PermissionsAndroid, Platform } from 'react-native';
 import * as Location from 'expo-location';
 const BLEAdvertiser = require('react-native-ble-advertiser') as typeof import('react-native-ble-advertiser');
+
+import { API_BASE_URL } from '../config';
+import { useAuth } from './AuthContext';
 
 const SOS_SERVICE_UUID = 'fef10001-7b82-4b93-b2c2-0f81ea3300a1';
 
@@ -34,7 +36,14 @@ type AppStateContextType = {
 
 const AppStateContext = createContext<AppStateContextType | null>(null);
 
+function createClientId() {
+  return `phone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const clientIdRef = useRef(createClientId());
+
   const [sosActive, setSosActive]       = useState(false);
   const [disasterType, setDisasterType] = useState<DisasterType>(null);
   const [bluetoothOn, setBluetoothOn]   = useState(false);
@@ -60,6 +69,70 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   function addLog(type: LogEntry['type'], message: string) {
     setLog((prev) => [{ id: String(Date.now()), type, message, time: nowLabel() }, ...prev]);
+  }
+
+  async function refreshCoords(): Promise<Coords | null> {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return coords;
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      setCoords(next);
+      setGpsLocked(true);
+      return next;
+    } catch {
+      return coords;
+    }
+  }
+
+  /** Best-effort phone GPS upload for web/cloud map (does not block BLE SOS). */
+  async function postCitizenSos(type: string, position: Coords | null) {
+    if (!position) {
+      addLog('info', 'Map upload skipped — no GPS fix yet');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/sos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: clientIdRef.current,
+          lat: position.lat,
+          lng: position.lng,
+          disasterType: type,
+          name: user?.name || 'Citizen',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      addLog(
+        'sos',
+        `Phone GPS sent to map — ${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}`,
+      );
+    } catch (error) {
+      console.error('Failed to post citizen SOS GPS', error);
+      addLog('info', 'Could not reach server to place SOS on web map (BLE still active)');
+    }
+  }
+
+  async function clearCitizenSos() {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/sos?clientId=${encodeURIComponent(clientIdRef.current)}`,
+        { method: 'DELETE' },
+      );
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      addLog('info', 'Phone GPS SOS cleared from map');
+    } catch (error) {
+      console.error('Failed to clear citizen SOS', error);
+      addLog('info', 'Could not clear SOS pin on server (beacon stopped locally)');
+    }
   }
 
   async function startBeacon(type: string) {
@@ -101,6 +174,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSosActive(true);
       setDisasterType(type as DisasterType);
       addLog('sos', `SOS beacon started — ${type.toUpperCase()} emergency — broadcasting over BLE`);
+
+      const position = await refreshCoords();
+      void postCitizenSos(type, position);
     } catch (error) {
       console.error('Failed to start BLE SOS beacon', error);
       const message = error instanceof Error ? error.message : 'Bluetooth advertising failed.';
@@ -120,6 +196,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setBluetoothOn(false);
     setSosActive(false);
     setDisasterType(null);
+    void clearCitizenSos();
   }
 
   return (
