@@ -14,6 +14,7 @@ import {
   Wifi,
   X,
 } from "lucide-react";
+import { API_BASE_URL } from "../dashboard/dashboardApi";
 
 export default function RescuersTab({
   dbRescuers,
@@ -307,7 +308,7 @@ export default function RescuersTab({
           </div>
 
           <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono px-1">
-            <span>Database Server: http://localhost:5000/api/rescuers</span>
+            <span>Database Server: {API_BASE_URL || "http://localhost:5000"}/api/rescuers</span>
             <span>Auto-sync: Active (Live DB state)</span>
           </div>
         </div>

@@ -22,7 +22,7 @@ import {
   MessageRescuerModal,
   DispatchModal,
 } from "./DashboardModals";
-import { apiFetch, ADMIN_API_PORTS } from "./dashboardApi";
+import { apiFetch, ADMIN_API_PORTS, API_BASE_URL } from "./dashboardApi";
 
 export default function DashboardContent({
   now,
@@ -381,7 +381,7 @@ export default function DashboardContent({
           <p className="text-xs text-slate-500 mt-0.5">Historical disaster events, response times, and evacuation records</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.open(`http://localhost:${ADMIN_API_PORTS[0]}/api/incidents/export`, "_blank")} className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2">
+          <button onClick={() => window.open(`${API_BASE_URL || `http://localhost:${ADMIN_API_PORTS[0]}`}/api/incidents/export`, "_blank")} className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-2">
             <Download size={13} />
             <span>Export CSV</span>
           </button>

@@ -15,11 +15,13 @@ export const TELEMETRY_API_PORTS = [
   ...new Set([configuredTelemetryPort, 3000, ...ADMIN_API_PORTS]),
 ];
 
-const CLOUD_ORIGIN = (
-  import.meta.env.VITE_TELEMETRY_URL ||
+export const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_TELEMETRY_URL ||
   ""
 ).replace(/\/$/, "");
+
+const CLOUD_ORIGIN = API_BASE_URL;
 
 /** @deprecated Use ADMIN_API_PORTS — kept for any older imports */
 export const API_PORTS = ADMIN_API_PORTS;
@@ -77,8 +79,18 @@ async function fetchLiveEndpoint(endpoint, options = {}) {
   return fetchAcrossPorts(TELEMETRY_API_PORTS, endpoint, options);
 }
 
-/** Admin / CRUD calls → web backend (:5000+) */
+/** Admin / CRUD calls → cloud backend origin or local web backend (:5000+) */
 export async function apiFetch(endpoint, options = {}) {
+  if (API_BASE_URL) {
+    const { headers, ...rest } = options;
+    return fetch(`${API_BASE_URL}${endpoint}`, {
+      ...rest,
+      headers: {
+        "Content-Type": "application/json",
+        ...(headers || {}),
+      },
+    });
+  }
   return fetchAcrossPorts(ADMIN_API_PORTS, endpoint, options);
 }
 

@@ -53,9 +53,25 @@ export default function LoginPage() {
   const timerRef = useRef(null);
   const notificationTimeoutRef = useRef(null);
 
+  const API_BASE_URL = (
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.VITE_TELEMETRY_URL ||
+    ""
+  ).replace(/\/$/, "");
+
   const API_PORTS = [Number(import.meta.env.VITE_API_PORT || 5000), 5001, 5002, 5003, 5010];
 
   const apiRequest = async (endpoint, options = {}) => {
+    if (API_BASE_URL) {
+      return fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+    }
+
     let lastError;
 
     for (const port of API_PORTS) {

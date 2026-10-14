@@ -1,4 +1,10 @@
-export const API = `http://localhost:${import.meta.env.VITE_API_PORT || 5000}`;
+const configuredApiBaseUrl = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_TELEMETRY_URL ||
+  ""
+).replace(/\/$/, "");
+
+export const API = configuredApiBaseUrl || `http://localhost:${import.meta.env.VITE_API_PORT || 5000}`;
 
 export function alertLevelStyle(level = "") {
   if (level.includes("CRITICAL")) {
