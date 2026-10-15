@@ -152,18 +152,18 @@ Rescuers must be admin-verified (`isRescuerVerified !== false`) before login suc
 | Log | Local event history from `AppStateContext` |
 | Settings | Emergency profile, MFA UI, session, logout; some toggles are UI-only |
 
-**Critical:** Citizen SOS does **not** POST to HTTP. Visibility depends on BLE → pod → LoRa → gateway → `POST /api/telemetry`. Expo Go cannot advertise BLE; use a native/dev build (`expo run:android`).
+**Dual signaling:** Citizen SOS broadcasts offline via BLE beacon, and also performs a best-effort HTTP upload (`POST /api/sos`) when network/LAN is reachable. Rescuers and dashboards receive alerts via both LoRa pod telemetry and direct citizen SOS. Expo Go cannot advertise BLE; use a native/dev build (`expo run:android`) for offline BLE mesh testing.
 
 ### 4.6 Rescuer features
 | Tab | Purpose |
 |-----|---------|
 | Radar | Compass/radar toward selected victim when bearing/distance available |
 | Map | Leaflet/OSM WebView + indoor floor overlay; navigation mode; victim situation updates; rescuer self-SOS |
-| Pods | Live LoRa pod list (nodeId, RSSI/SNR, hops, GPS, receivedAt) |
+| Pods | Live LoRa pod list & active citizen SOS beacons (nodeId, RSSI/SNR, hops, GPS, SOS alerts, receivedAt) |
 | Log | Casualty logging by disaster type (local + toasts) |
 
-- Polls `GET /api/telemetry` every **~5 seconds**
-- Live SOS victims derived from `msgType === 1` or `bleVictims > 0`
+- Polls `GET /api/telemetry` and `GET /api/sos` every **~4 seconds**
+- Live SOS victims derived from pod telemetry (`msgType === 1` or `bleVictims > 0`) and direct citizen SOS reports
 - Victim status codes: 1 safe, 2 injured, 3 trapped, 4 lost/unable to move
 
 ### 4.7 Auth & state

@@ -28,7 +28,7 @@ import { Mono, PulsingDot } from "../components/SharedUI";
 import { styles } from "../theme/styles";
 import { RadarView } from "../components/RadarView";
 import { MapView } from "../components/MapView";
-import { fetchPodTelemetry, PodTelemetry } from "../services/telemetry";
+import { fetchPodTelemetry, fetchCitizenSos, PodTelemetry, CitizenSosReport } from "../services/telemetry";
 
 import {
   situationColors,
@@ -56,6 +56,7 @@ export function MainTabNavigator() {
   const [logs, setLogs] = useState<any[]>([]);
   const [rescuerEmergency, setRescuerEmergency] = useState<"trapped" | "injured" | null>(null);
   const [gatewayTelemetry, setGatewayTelemetry] = useState<PodTelemetry[]>([]);
+  const [citizenSosList, setCitizenSosList] = useState<CitizenSosReport[]>([]);
   const [gatewayStatus, setGatewayStatus] = useState<"connecting" | "online" | "offline">("connecting");
 
   useEffect(() => {
@@ -64,16 +65,31 @@ export function MainTabNavigator() {
 
     const pollTelemetry = async () => {
       try {
-        const reports = await fetchPodTelemetry();
+        const [podResult, citizenResult] = await Promise.allSettled([
+          fetchPodTelemetry(),
+          fetchCitizenSos(),
+        ]);
+
         if (!active) return;
-        setGatewayTelemetry(reports);
-        setGatewayStatus("online");
+
+        if (podResult.status === "fulfilled") {
+          setGatewayTelemetry(podResult.value);
+          setGatewayStatus("online");
+        } else {
+          console.error("Failed to fetch gateway telemetry", podResult.reason);
+          setGatewayStatus("offline");
+        }
+
+        if (citizenResult.status === "fulfilled") {
+          setCitizenSosList(citizenResult.value);
+        } else {
+          console.error("Failed to fetch citizen SOS", citizenResult.reason);
+        }
       } catch (error) {
-        console.error("Failed to fetch gateway telemetry", error);
-        if (active) setGatewayStatus("offline");
+        console.error("Error in telemetry polling cycle", error);
       }
 
-      if (active) timer = setTimeout(pollTelemetry, 5000);
+      if (active) timer = setTimeout(pollTelemetry, 4000);
     };
 
     void pollTelemetry();
@@ -136,9 +152,10 @@ export function MainTabNavigator() {
 
   const liveVictims = victimsList;
 
-  const liveSosVictims = gatewayTelemetry
+  // 1. Live SOS reports from hardware LoRa pods (or gateway)
+  const podSosVictims = gatewayTelemetry
     .filter(() => gatewayStatus !== "offline")
-    .filter((report) => report.msgType === 1 || report.bleVictims > 0)
+    .filter((report) => (report.msgType === 1 || report.bleVictims > 0) && report.gatewayId !== "CITIZEN-APP-GATEWAY")
     .map((report) => {
       const hasGpsFix = report.fix && report.sats > 0 && report.lat !== null && report.lng !== null;
       const situationByStatus: Record<number, string> = {
@@ -150,8 +167,8 @@ export function MainTabNavigator() {
       return {
         id: `LIVE-${report.nodeId}`,
         label: report.nearestVictimId
-          ? `SOS ${report.nearestVictimId}`
-          : `SOS ${report.nodeId}`,
+          ? `SOS Pod ${report.nodeId} (${report.nearestVictimId})`
+          : `SOS Pod ${report.nodeId}`,
         distance: null,
         bearing: null,
         floor: null,
@@ -166,6 +183,29 @@ export function MainTabNavigator() {
         isLive: true,
       };
     });
+
+  // 2. Direct SOS reports from Citizen App
+  const citizenSosVictims = citizenSosList.map((sos) => {
+    const hasCoords = typeof sos.lat === "number" && typeof sos.lng === "number";
+    return {
+      id: sos.id || `SOS-${sos.clientId}`,
+      label: `${sos.name || 'Citizen'} (${sos.disasterType ? sos.disasterType.toUpperCase() : 'EMERGENCY'})`,
+      distance: null,
+      bearing: null,
+      floor: null,
+      signalStrength: null,
+      situation: "trapped",
+      lastPing: "live beacon",
+      disasterType: sos.disasterType || "Emergency",
+      lat: hasCoords ? sos.lat : null,
+      lng: hasCoords ? sos.lng : null,
+      hasLocation: hasCoords,
+      hasGpsFix: hasCoords,
+      isLive: true,
+    };
+  });
+
+  const liveSosVictims = [...citizenSosVictims, ...podSosVictims];
 
   useEffect(() => {
     if (!selectedVictim || ![...liveVictims, ...liveSosVictims].some((victim) => victim.id === selectedVictim)) {
@@ -215,7 +255,7 @@ export function MainTabNavigator() {
             </View>
           </View>
           <View style={[styles.row, { marginTop: 4 }]}>
-            <PulsingDot color="#ef4444" />
+            <PulsingDot color={liveSosVictims.length > 0 ? "#ef4444" : "#22c55e"} />
             <Mono style={styles.headerSubtitle}>
               {liveSosVictims.length} live SOS · {gatewayTelemetry.length} pods · gateway {gatewayStatus}
             </Mono>
@@ -313,7 +353,13 @@ export function MainTabNavigator() {
               hops: report.hopCount,
               receivedAt: report.receivedAt,
               hasGpsFix: report.fix && report.sats > 0,
+              isSos: report.msgType === 1 || report.bleVictims > 0,
+              bleVictims: report.bleVictims,
+              nearestVictimId: report.nearestVictimId,
+              gatewayId: report.gatewayId,
             }))}
+            citizenSosList={citizenSosList}
+            onSelectSos={handleSelectVictim}
           />
         )}
         {tab === "log" && (

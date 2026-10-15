@@ -193,8 +193,41 @@ app.post('/api/sos', (req, res) => {
       list[existingIndex] = report;
     }
     db.citizenSos = list;
+
+    // Mirror to podTelemetry as a virtual direct-beacon pod for rescuer app and web maps
+    const telemetry = Array.isArray(db.podTelemetry) ? db.podTelemetry : [];
+    const virtualNodeId = crypto.createHash('md5').update(clientId).digest('hex').slice(0, 6).toUpperCase();
+    const virtualPod = {
+      nodeId: virtualNodeId,
+      gatewayId: 'CITIZEN-APP-GATEWAY',
+      seq: 1,
+      msgType: 1, // SOS
+      fix: true,
+      lat: body.lat,
+      lng: body.lng,
+      gatewayLat: body.lat,
+      gatewayLng: body.lng,
+      sats: 12,
+      bleVictims: 1,
+      nearestRssi: -45,
+      nearestVictimId: clientId.slice(0, 8).toUpperCase(),
+      victimStatus: 3, // trapped
+      hopCount: 0,
+      uptime: 60,
+      loraRssi: -50,
+      loraSnr: 9.0,
+      receivedAt,
+    };
+    const existingPodIdx = telemetry.findIndex((p) => p.nodeId === virtualNodeId);
+    if (existingPodIdx === -1) {
+      telemetry.push(virtualPod);
+    } else {
+      telemetry[existingPodIdx] = virtualPod;
+    }
+    db.podTelemetry = telemetry;
+
     writeDB(db);
-    return res.status(202).json({ message: 'Citizen SOS received.', id: report.id, clientId });
+    return res.status(202).json({ message: 'Citizen SOS received.', id: report.id, clientId, virtualNodeId });
   } catch (error) {
     console.error('Failed to store citizen SOS:', error.message);
     return res.status(500).json({ message: 'Failed to store citizen SOS.' });
@@ -231,6 +264,12 @@ app.delete('/api/sos', (req, res) => {
     const db = readDB();
     const list = Array.isArray(db.citizenSos) ? db.citizenSos : [];
     db.citizenSos = list.filter((item) => item.clientId !== clientId);
+
+    const virtualNodeId = crypto.createHash('md5').update(clientId).digest('hex').slice(0, 6).toUpperCase();
+    if (Array.isArray(db.podTelemetry)) {
+      db.podTelemetry = db.podTelemetry.filter((p) => p.nodeId !== virtualNodeId);
+    }
+
     writeDB(db);
     return res.status(200).json({ message: 'Citizen SOS cleared.', clientId });
   } catch (error) {
