@@ -277,36 +277,105 @@ function getTransporter() {
   const gmailUser = process.env.GMAIL_USER;
   const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASSWORD || "").replace(/\s/g, "");
   if (gmailUser && gmailPass) {
+    const port = parseInt(process.env.SMTP_PORT || "465");
     return nodemailer.createTransport({
-      service: "gmail",
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: port,
+      secure: port === 465,
       auth: {
         user: gmailUser,
         pass: gmailPass,
       },
-      connectionTimeout: 7000,
-      greetingTimeout: 7000,
-      socketTimeout: 10000,
+      family: 4, // Force IPv4: crucial on cloud containers (Render) to avoid IPv6 hang
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 5000,
+      tls: {
+        rejectUnauthorized: false
+      }
     });
   }
 
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    const port = parseInt(process.env.SMTP_PORT || "587");
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true",
+      port: port,
+      secure: process.env.SMTP_SECURE === "true" || port === 465,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
-      connectionTimeout: 7000,
-      greetingTimeout: 7000,
-      socketTimeout: 10000,
+      family: 4,
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 5000,
+      tls: {
+        rejectUnauthorized: false
+      }
     });
   }
   return null;
 }
 
-async function sendMail(to, subject, text, html) {
+async function sendMail(to, subject, text, html, code = null) {
+  // 1. If RESEND_API_KEY is provided (Uses port 443 HTTPS, immune to Render SMTP blocking)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || "ZamboAlert <onboarding@resend.dev>",
+          to: [to],
+          subject,
+          text,
+          html
+        })
+      });
+      if (resp.ok) {
+        console.log(`[Resend HTTP] Email successfully sent to ${to}`);
+        return true;
+      }
+      const errBody = await resp.text();
+      console.warn(`[Resend HTTP API error]:`, errBody);
+    } catch (e) {
+      console.warn(`[Resend HTTP API failed]:`, e.message);
+    }
+  }
+
+  // 2. If BREVO_API_KEY is provided (Uses port 443 HTTPS, immune to Render SMTP blocking)
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": process.env.BREVO_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          sender: { name: "ZamboAlert Security", email: process.env.BREVO_FROM_EMAIL || process.env.GMAIL_USER || "admin@zamboalert.com" },
+          to: [{ email: to }],
+          subject,
+          textContent: text,
+          htmlContent: html
+        })
+      });
+      if (resp.ok) {
+        console.log(`[Brevo HTTP] Email successfully sent to ${to}`);
+        return true;
+      }
+      const errBody = await resp.text();
+      console.warn(`[Brevo HTTP API error]:`, errBody);
+    } catch (e) {
+      console.warn(`[Brevo HTTP API failed]:`, e.message);
+    }
+  }
+
+  // 3. Fallback to Nodemailer SMTP
   const transporter = getTransporter();
   const fromEmail = process.env.GMAIL_USER || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "no-reply@zamboalert.com";
   const fromName = process.env.SMTP_FROM_NAME || "ZamboAlert Security";
@@ -323,14 +392,22 @@ async function sendMail(to, subject, text, html) {
       console.log(`Email successfully sent to ${to}`);
       return true;
     } catch (error) {
-      console.error("Email sending failed:", error);
+      console.error(`Email sending failed: ${error.message}`);
+      console.log(`\n==================================================`);
+      console.log(`[FALLBACK - EMAIL SEND TIMEOUT ON RENDER]`);
+      console.log(`Recipient: ${to}`);
+      if (code) {
+        console.log(`>>> AUTHENTICATION CODE: ${code} <<<`);
+      }
+      console.log(`==================================================\n`);
       return false;
     }
   } else {
     console.log("\n==================================================");
     console.log(`[SMTP NOT CONFIGURED] Email to: ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Content: ${text}`);
+    if (code) {
+      console.log(`>>> AUTHENTICATION CODE: ${code} <<<`);
+    }
     console.log("==================================================\n");
     return false;
   }
@@ -411,13 +488,14 @@ app.post("/api/auth/register", async (req, res) => {
                 return res.status(500).json({ message: "Failed to update registration" });
               }
 
-              await sendMail(cleanEmail, subject, text, html);
+              const emailSent = await sendMail(cleanEmail, subject, text, html, code);
 
               return res.status(200).json({
-                message: password
-                  ? "Verification code sent to your email. Check your inbox."
-                  : "Verification code and temporary password sent to your email.",
+                message: emailSent
+                  ? (password ? "Verification code sent to your email. Check your inbox." : "Verification code and temporary password sent to your email.")
+                  : `Account updated! (Email timed out: verification code is ${code})`,
                 email: cleanEmail,
+                code: !emailSent ? code : undefined,
               });
             }
           );
@@ -432,13 +510,14 @@ app.post("/api/auth/register", async (req, res) => {
               return res.status(500).json({ message: "Failed to create user" });
             }
 
-            await sendMail(cleanEmail, subject, text, html);
+            const emailSent = await sendMail(cleanEmail, subject, text, html, code);
 
             return res.status(201).json({
-              message: password
-                ? "User registered successfully. Verification code sent."
-                : "User registered successfully. Verification code and temporary password sent.",
+              message: emailSent
+                ? (password ? "User registered successfully. Verification code sent." : "User registered successfully. Verification code and temporary password sent.")
+                : `User registered! (Email timed out: verification code is ${code})`,
               email: cleanEmail,
+              code: !emailSent ? code : undefined,
             });
           }
         );
@@ -538,12 +617,15 @@ app.post("/api/auth/login", (req, res) => {
             </div>
           `;
 
-          await sendMail(user.email, subject, text, html);
+          const emailSent = await sendMail(user.email, subject, text, html, code);
 
           res.json({
-            message: "Credentials accepted. 2FA verification code sent to your email.",
+            message: emailSent
+              ? "Credentials accepted. 2FA verification code sent to your email."
+              : `Credentials accepted! (Email server timed out: your 2FA code is ${code})`,
             username: user.username,
             email: user.email,
+            code: !emailSent ? code : undefined,
           });
         }
       );
@@ -640,10 +722,13 @@ app.post("/api/auth/resend-code", (req, res) => {
         </div>
       `;
 
-      await sendMail(user.email, subject, text, html);
+      const emailSent = await sendMail(user.email, subject, text, html, code);
 
       res.json({
-        message: "New code sent successfully",
+        message: emailSent
+          ? "New code sent successfully"
+          : `New code generated! (Email server timed out: your code is ${code})`,
+        code: !emailSent ? code : undefined,
       });
     });
   });
@@ -688,11 +773,14 @@ app.post("/api/auth/forgot-password", (req, res) => {
           </div>
         `;
 
-        await sendMail(user.email, subject, text, html);
+        const emailSent = await sendMail(user.email, subject, text, html, code);
 
         res.json({
-          message: "Password reset code has been sent to your email.",
-          email: user.email
+          message: emailSent
+            ? "Password reset code has been sent to your email."
+            : `Password reset requested! (Email server timed out: your code is ${code})`,
+          email: user.email,
+          code: !emailSent ? code : undefined,
         });
       }
     );

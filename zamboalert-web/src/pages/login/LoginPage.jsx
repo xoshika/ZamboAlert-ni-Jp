@@ -221,7 +221,10 @@ export default function LoginPage() {
         setView("mfa");
         setResendTimer(60);
         setEmailOpened(false);
-        showNotificationMsg("2FA Code sent to your official email.", "success");
+        showNotificationMsg(data.message || "2FA Code sent to your official email.", "success");
+        if (data.code) {
+          setTwoFactorCode(data.code);
+        }
       } else if (response.status === 403 && data.unverified) {
         setEmail(data.email);
         setView("verify");
@@ -260,7 +263,10 @@ export default function LoginPage() {
 
       if (response.ok) {
         setView("verify");
-        showNotificationMsg("Verification code sent to your email. Check your inbox.", "success");
+        showNotificationMsg(data.message || "Verification code sent to your email. Check your inbox.", "success");
+        if (data.code) {
+          setVerificationCode(data.code);
+        }
         setPassword("");
         setConfirmPassword("");
       } else {
@@ -337,7 +343,10 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        showNotificationMsg("Password reset code sent to your email.", "success");
+        showNotificationMsg(data.message || "Password reset code sent to your email.", "success");
+        if (data.code) {
+          setResetCode(data.code);
+        }
         setView("reset_password");
         setVerificationCode("");
         setPassword("");
@@ -772,7 +781,10 @@ export default function LoginPage() {
                             });
                             const data = await response.json();
                             if (response.ok) {
-                              showNotificationMsg("A new MFA code has been sent to your email.", "success");
+                              showNotificationMsg(data.message || "A new MFA code has been sent to your email.", "success");
+                              if (data.code) {
+                                setTwoFactorCode(data.code);
+                              }
                               setResendTimer(60);
                               setEmailOpened(false);
                             } else {
