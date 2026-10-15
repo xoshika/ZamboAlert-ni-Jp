@@ -24,7 +24,6 @@ export function useDashboardData() {
   const [dispatchTarget, setDispatchTarget] = useState(null);
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showCallRescuerModal, setShowCallRescuerModal] = useState(false);
-  const [showAutoCallModal, setShowAutoCallModal] = useState(false);
   const [activeTab, setActiveTab] = useState("map");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -335,8 +334,6 @@ export function useDashboardData() {
     setShowBroadcast,
     showCallRescuerModal,
     setShowCallRescuerModal,
-    showAutoCallModal,
-    setShowAutoCallModal,
     activeTab,
     setActiveTab,
     isSidebarCollapsed,

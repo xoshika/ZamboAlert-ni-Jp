@@ -5,7 +5,6 @@ import {
   Download,
   Home,
   MessageSquare,
-  PhoneForwarded,
   Printer,
   RefreshCw,
   ShieldAlert,
@@ -17,7 +16,6 @@ import SettingsPage from "../settings/SettingsPage";
 import { fmtTime } from "./dashboardData";
 import { TacticalMap, PingDot, StatusBadge, RescuerBadge } from "./DashboardMap";
 import {
-  AutoCallZcdrrmoModal,
   BroadcastModal,
   MessageRescuerModal,
   DispatchModal,
@@ -42,8 +40,6 @@ export default function DashboardContent({
   setShowBroadcast,
   showCallRescuerModal,
   setShowCallRescuerModal,
-  showAutoCallModal,
-  setShowAutoCallModal,
   activeTab,
   setActiveTab,
   isSidebarCollapsed,
@@ -211,11 +207,6 @@ export default function DashboardContent({
           <button onClick={() => setShowBroadcast(true)} className="w-full py-3 px-4 bg-red-700 hover:bg-red-800 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2.5 cursor-pointer">
             <Volume2 size={16} />
             <span>LoRa Mesh Broadcast</span>
-          </button>
-
-          <button onClick={() => setShowAutoCallModal(true)} className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2.5 cursor-pointer">
-            <PhoneForwarded size={16} />
-            <span>Auto-Call ZCDRRMO Office</span>
           </button>
 
           <button onClick={() => setShowCallRescuerModal(true)} className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-2.5 cursor-pointer">
@@ -613,13 +604,6 @@ export default function DashboardContent({
           onDispatch={(rescuerId, targetType, targetId, targetName) => {
             handleDispatch(rescuerId, targetType, targetId, targetName);
           }}
-        />
-      )}
-      {showAutoCallModal && (
-        <AutoCallZcdrrmoModal
-          alerts={alerts}
-          casualties={casualtyLogs}
-          onClose={() => setShowAutoCallModal(false)}
         />
       )}
     </div>

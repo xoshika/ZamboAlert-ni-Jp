@@ -53,8 +53,6 @@ export default function DashboardPage() {
         setShowBroadcast={dashboard.setShowBroadcast}
         showCallRescuerModal={dashboard.showCallRescuerModal}
         setShowCallRescuerModal={dashboard.setShowCallRescuerModal}
-        showAutoCallModal={dashboard.showAutoCallModal}
-        setShowAutoCallModal={dashboard.setShowAutoCallModal}
         activeTab={dashboard.activeTab}
         setActiveTab={dashboard.setActiveTab}
         isSidebarCollapsed={dashboard.isSidebarCollapsed}

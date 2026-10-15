@@ -6,4 +6,4 @@
  * UPDATE THIS to the PC's current LAN IP whenever the network changes.
  * Run `ipconfig` (Windows) or `ip addr` (Linux/Mac) to find the current IP.
  */
-export const API_BASE_URL = 'http://192.168.1.17:3000';
+export const API_BASE_URL = '';

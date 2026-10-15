@@ -264,7 +264,7 @@ export default function LoginPage() {
         setPassword("");
         setConfirmPassword("");
       } else {
-        showNotificationMsg(data.message || "Registration failed", "error");
+        showNotificationMsg(data.message || data.error || "Registration failed", "error");
       }
     } catch (error) {
       showNotificationMsg("Cannot connect to backend server. Make sure it is running.", "error");

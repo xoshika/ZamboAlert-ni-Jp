@@ -382,6 +382,80 @@ app.post('/api/auth/signup', async (req, res) => {
   return res.json({ success: true, email: newUser.email });
 });
 
+// Register Endpoint (Web Admin compatibility alias)
+app.post('/api/auth/register', async (req, res) => {
+  const { firstName, lastName, email, password, phoneNumber, contactNumber, role } = req.body;
+  if (!firstName || !lastName || !email || !password) {
+    return res.status(400).json({ message: 'All fields are required.', error: 'All fields are required.' });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const db = readDB();
+  const existing = db.users.find(u => u.email.toLowerCase() === cleanEmail);
+
+  if (existing) {
+    if (existing.isVerified) {
+      return res.status(400).json({ message: 'An account with this email already exists. Try logging in.', error: 'An account with this email already exists. Try logging in.' });
+    }
+    // Update unverified user with new password and code
+    const code = generateCode();
+    existing.passwordHash = sha256(password);
+    existing.firstName = firstName.trim();
+    existing.lastName = lastName.trim();
+    existing.contactNumber = (phoneNumber || contactNumber || existing.contactNumber || 'N/A').trim();
+    existing.emailVerificationCodeHash = sha256(code);
+    existing.emailVerificationExpiresAt = Date.now() + VERIFICATION_CODE_TTL_MS;
+
+    try {
+      await sendVerificationEmail(existing.email, code);
+    } catch (error) {
+      console.error('Failed to send registration verification email:', error.message);
+      return res.status(503).json({ error: 'Could not send verification email. Please try again.' });
+    }
+
+    try {
+      writeDB(db);
+    } catch (error) {
+      return res.status(500).json({ error: 'Could not update your account. Please try again.' });
+    }
+    return res.json({ success: true, message: 'Verification code sent to your email.', email: existing.email });
+  }
+
+  const code = generateCode();
+  const newUser = {
+    id: String(Date.now()),
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
+    email: cleanEmail,
+    passwordHash: sha256(password),
+    role: role || 'barangay_official',
+    failedAttempts: 0,
+    isVerified: false,
+    mfaEnabled: false,
+    mfaSecret: '',
+    contactNumber: (phoneNumber || contactNumber || 'N/A').trim(),
+    emailVerificationCodeHash: sha256(code),
+    emailVerificationExpiresAt: Date.now() + VERIFICATION_CODE_TTL_MS
+  };
+
+  try {
+    await sendVerificationEmail(newUser.email, code);
+  } catch (error) {
+    console.error('Failed to send signup verification email:', error.message);
+    return res.status(503).json({
+      error: 'We could not send a verification email. Please check the Gmail mailer configuration and try again.'
+    });
+  }
+
+  db.users.push(newUser);
+  try {
+    writeDB(db);
+  } catch (error) {
+    return res.status(500).json({ error: 'Could not create your account. Please try again.' });
+  }
+  return res.json({ success: true, message: 'User registered successfully. Verification code sent.', email: newUser.email });
+});
+
 // Verify Email Code Endpoint
 app.post('/api/auth/verify-email', (req, res) => {
   const { email, code } = req.body;

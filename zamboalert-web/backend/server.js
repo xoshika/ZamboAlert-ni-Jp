@@ -274,7 +274,21 @@ function createTables() {
 
 // Mailer Setup helper
 function getTransporter() {
-  // If SMTP configs exist, use them. Otherwise, use a fake transporter or log to console.
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailPass = (process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASSWORD || "").replace(/\s/g, "");
+  if (gmailUser && gmailPass) {
+    return nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: gmailUser,
+        pass: gmailPass,
+      },
+      connectionTimeout: 7000,
+      greetingTimeout: 7000,
+      socketTimeout: 10000,
+    });
+  }
+
   if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -284,6 +298,9 @@ function getTransporter() {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
+      connectionTimeout: 7000,
+      greetingTimeout: 7000,
+      socketTimeout: 10000,
     });
   }
   return null;
@@ -291,10 +308,13 @@ function getTransporter() {
 
 async function sendMail(to, subject, text, html) {
   const transporter = getTransporter();
+  const fromEmail = process.env.GMAIL_USER || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "no-reply@zamboalert.com";
+  const fromName = process.env.SMTP_FROM_NAME || "ZamboAlert Security";
+
   if (transporter) {
     try {
       await transporter.sendMail({
-        from: `"${process.env.SMTP_FROM_NAME || "ZamboAlert Security"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+        from: `"${fromName}" <${fromEmail}>`,
         to,
         subject,
         text,
@@ -308,7 +328,7 @@ async function sendMail(to, subject, text, html) {
     }
   } else {
     console.log("\n==================================================");
-    console.log(`[SMTP NOT CONFIGURING] Email to: ${to}`);
+    console.log(`[SMTP NOT CONFIGURED] Email to: ${to}`);
     console.log(`Subject: ${subject}`);
     console.log(`Content: ${text}`);
     console.log("==================================================\n");
@@ -331,68 +351,99 @@ app.post("/api/auth/register", async (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  const username = `${firstName} ${lastName}`;
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanFirstName = firstName.trim();
+  const cleanLastName = lastName.trim();
+  const username = `${cleanFirstName} ${cleanLastName}`;
   const tempPassword = password ? null : ("ZamboAlert_" + Math.floor(1000 + Math.random() * 9000));
   const finalPassword = password || tempPassword;
 
   try {
     // Check if user already exists
-    db.get("SELECT id FROM users WHERE email = ? OR username = ?", [email, username], async (err, row) => {
-      if (err) return res.status(500).json({ message: "Database query error" });
-      if (row) {
-        return res.status(400).json({ message: "Email or name already in use" });
-      }
+    db.get(
+      "SELECT id, email, username, is_verified FROM users WHERE LOWER(email) = ? OR LOWER(username) = ?",
+      [cleanEmail, username.toLowerCase()],
+      async (err, row) => {
+        if (err) return res.status(500).json({ message: "Database query error" });
 
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(finalPassword, salt);
-
-      // Generate verification code
-      const code = generateCode();
-      const expires = Date.now() + 15 * 60 * 1000; // 15 mins
-
-      db.run(
-        "INSERT INTO users (email, username, password, verification_code, verification_expires, phone_number) VALUES (?, ?, ?, ?, ?, ?)",
-        [email, username, hashedPassword, code, expires, phoneNumber || null],
-        async function (insertErr) {
-          if (insertErr) {
-            return res.status(500).json({ message: "Failed to create user" });
+        // If an account exists and is already verified:
+        if (row && row.is_verified) {
+          if (row.email && row.email.toLowerCase() === cleanEmail) {
+            return res.status(400).json({ message: "An account with this email already exists. Please log in." });
           }
-
-          // Send verification email
-          const subject = "Verify your ZamboAlert Account";
-          const text = password
-            ? `Your email verification code is: ${code}. It expires in 15 minutes.`
-            : `Your email verification code is: ${code}. Your temporary login password is: ${tempPassword}. It expires in 15 minutes.`;
-          const html = `
-            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #f1f1f1; border-radius: 8px; max-width: 500px; margin: auto;">
-              <h2 style="color: #b91c1c; text-align: center;">ZamboAlert Security</h2>
-              <p>Hello <strong>${username}</strong>,</p>
-              <p>Thank you for registering. Here are your account details:</p>
-              <div style="background-color: #f9fafb; padding: 15px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 15px 0;">
-                <p style="margin: 0 0 8px 0;"><strong>Username:</strong> ${username}</p>
-                <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${email}</p>
-                ${password ? "" : `<p style="margin: 0;"><strong>Temporary Password:</strong> <code style="background-color: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #b91c1c;">${tempPassword}</code></p>`}
-              </div>
-              <p>Please use the following verification code to activate your account:</p>
-              <div style="font-size: 24px; font-weight: bold; text-align: center; padding: 15px; background-color: #fef2f2; border: 1px dashed #f87171; color: #b91c1c; margin: 20px 0; border-radius: 4px; letter-spacing: 4px;">
-                ${code}
-              </div>
-              <p style="font-size: 12px; color: #6b7280; text-align: center;">This code will expire in 15 minutes.</p>
-            </div>
-          `;
-
-          const emailSent = await sendMail(email, subject, text, html);
-
-          res.status(201).json({
-            message: password
-              ? "User registered successfully. Verification code sent."
-              : "User registered successfully. Verification code and temporary password sent.",
-            email,
-          });
+          return res.status(400).json({ message: `An account with the name "${username}" already exists. Please choose a different name or log in.` });
         }
-      );
-    });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(finalPassword, salt);
+        const code = generateCode();
+        const expires = Date.now() + 15 * 60 * 1000; // 15 mins
+
+        const subject = "Verify your ZamboAlert Account";
+        const text = password
+          ? `Your email verification code is: ${code}. It expires in 15 minutes.`
+          : `Your email verification code is: ${code}. Your temporary login password is: ${tempPassword}. It expires in 15 minutes.`;
+        const html = `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #f1f1f1; border-radius: 8px; max-width: 500px; margin: auto;">
+            <h2 style="color: #b91c1c; text-align: center;">ZamboAlert Security</h2>
+            <p>Hello <strong>${username}</strong>,</p>
+            <p>Thank you for registering. Here are your account details:</p>
+            <div style="background-color: #f9fafb; padding: 15px; border-radius: 6px; border: 1px solid #e5e7eb; margin: 15px 0;">
+              <p style="margin: 0 0 8px 0;"><strong>Username:</strong> ${username}</p>
+              <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${cleanEmail}</p>
+              ${password ? "" : `<p style="margin: 0;"><strong>Temporary Password:</strong> <code style="background-color: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #b91c1c;">${tempPassword}</code></p>`}
+            </div>
+            <p>Please use the following verification code to activate your account:</p>
+            <div style="font-size: 24px; font-weight: bold; text-align: center; padding: 15px; background-color: #fef2f2; border: 1px dashed #f87171; color: #b91c1c; margin: 20px 0; border-radius: 4px; letter-spacing: 4px;">
+              ${code}
+            </div>
+            <p style="font-size: 12px; color: #6b7280; text-align: center;">This code will expire in 15 minutes.</p>
+          </div>
+        `;
+
+        // If the user already registered before but never verified: update credentials and resend verification code
+        if (row && !row.is_verified) {
+          return db.run(
+            "UPDATE users SET email = ?, username = ?, password = ?, verification_code = ?, verification_expires = ?, phone_number = ? WHERE id = ?",
+            [cleanEmail, username, hashedPassword, code, expires, phoneNumber ? phoneNumber.trim() : null, row.id],
+            async function (updateErr) {
+              if (updateErr) {
+                return res.status(500).json({ message: "Failed to update registration" });
+              }
+
+              await sendMail(cleanEmail, subject, text, html);
+
+              return res.status(200).json({
+                message: password
+                  ? "Verification code sent to your email. Check your inbox."
+                  : "Verification code and temporary password sent to your email.",
+                email: cleanEmail,
+              });
+            }
+          );
+        }
+
+        // New user registration
+        db.run(
+          "INSERT INTO users (email, username, password, verification_code, verification_expires, phone_number, is_verified) VALUES (?, ?, ?, ?, ?, ?, 0)",
+          [cleanEmail, username, hashedPassword, code, expires, phoneNumber ? phoneNumber.trim() : null],
+          async function (insertErr) {
+            if (insertErr) {
+              return res.status(500).json({ message: "Failed to create user" });
+            }
+
+            await sendMail(cleanEmail, subject, text, html);
+
+            return res.status(201).json({
+              message: password
+                ? "User registered successfully. Verification code sent."
+                : "User registered successfully. Verification code and temporary password sent.",
+              email: cleanEmail,
+            });
+          }
+        );
+      }
+    );
   } catch (error) {
     res.status(500).json({ message: "Registration error" });
   }
@@ -406,14 +457,17 @@ app.post("/api/auth/verify-email", (req, res) => {
     return res.status(400).json({ message: "Email and verification code are required" });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanCode = code.toString().trim();
+
   db.get(
-    "SELECT id, verification_code, verification_expires FROM users WHERE email = ?",
-    [email],
+    "SELECT id, verification_code, verification_expires FROM users WHERE LOWER(email) = ?",
+    [cleanEmail],
     (err, row) => {
       if (err) return res.status(500).json({ message: "Database query error" });
       if (!row) return res.status(404).json({ message: "User not found" });
 
-      if (row.verification_code !== code) {
+      if (row.verification_code !== cleanCode) {
         return res.status(400).json({ message: "Invalid verification code" });
       }
 
@@ -441,9 +495,11 @@ app.post("/api/auth/login", (req, res) => {
     return res.status(400).json({ message: "Username/email and password are required" });
   }
 
+  const cleanLogin = username.trim().toLowerCase();
+
   db.get(
-    "SELECT * FROM users WHERE username = ? OR email = ?",
-    [username, username],
+    "SELECT * FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?",
+    [cleanLogin, cleanLogin],
     async (err, user) => {
       if (err) return res.status(500).json({ message: "Database query error" });
       if (!user) return res.status(401).json({ message: "Invalid username/email or password" });
@@ -482,7 +538,7 @@ app.post("/api/auth/login", (req, res) => {
             </div>
           `;
 
-          const emailSent = await sendMail(user.email, subject, text, html);
+          await sendMail(user.email, subject, text, html);
 
           res.json({
             message: "Credentials accepted. 2FA verification code sent to your email.",
@@ -503,14 +559,17 @@ app.post("/api/auth/verify-2fa", (req, res) => {
     return res.status(400).json({ message: "Username and code are required" });
   }
 
+  const cleanUser = username.trim().toLowerCase();
+  const cleanCode = code.toString().trim();
+
   db.get(
-    "SELECT id, username, email, two_fa_code, two_fa_expires FROM users WHERE username = ? OR email = ?",
-    [username, username],
+    "SELECT id, username, email, two_fa_code, two_fa_expires FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?",
+    [cleanUser, cleanUser],
     (err, user) => {
       if (err) return res.status(500).json({ message: "Database query error" });
       if (!user) return res.status(404).json({ message: "User not found" });
 
-      if (user.two_fa_code !== code) {
+      if (user.two_fa_code !== cleanCode) {
         return res.status(400).json({ message: "Invalid 2FA code" });
       }
 
@@ -551,7 +610,9 @@ app.post("/api/auth/resend-code", (req, res) => {
     return res.status(400).json({ message: "Email is required" });
   }
 
-  db.get("SELECT id, username, email FROM users WHERE email = ?", [email], async (err, user) => {
+  const cleanEmail = email.trim().toLowerCase();
+
+  db.get("SELECT id, username, email FROM users WHERE LOWER(email) = ?", [cleanEmail], async (err, user) => {
     if (err) return res.status(500).json({ message: "Database query error" });
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -579,7 +640,7 @@ app.post("/api/auth/resend-code", (req, res) => {
         </div>
       `;
 
-      const emailSent = await sendMail(user.email, subject, text, html);
+      await sendMail(user.email, subject, text, html);
 
       res.json({
         message: "New code sent successfully",
@@ -598,7 +659,9 @@ app.post("/api/auth/forgot-password", (req, res) => {
     return res.status(400).json({ message: "Email is required" });
   }
 
-  db.get("SELECT id, username, email FROM users WHERE email = ?", [email], async (err, user) => {
+  const cleanEmail = email.trim().toLowerCase();
+
+  db.get("SELECT id, username, email FROM users WHERE LOWER(email) = ?", [cleanEmail], async (err, user) => {
     if (err) return res.status(500).json({ message: "Database query error" });
     if (!user) return res.status(404).json({ message: "No official account registered with this email." });
 
@@ -644,14 +707,17 @@ app.post("/api/auth/reset-password", async (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanCode = code.toString().trim();
+
   db.get(
-    "SELECT id, verification_code, verification_expires FROM users WHERE email = ?",
-    [email],
+    "SELECT id, verification_code, verification_expires FROM users WHERE LOWER(email) = ?",
+    [cleanEmail],
     async (err, user) => {
       if (err) return res.status(500).json({ message: "Database query error" });
       if (!user) return res.status(404).json({ message: "User not found" });
 
-      if (user.verification_code !== code) {
+      if (user.verification_code !== cleanCode) {
         return res.status(400).json({ message: "Invalid reset code" });
       }
 

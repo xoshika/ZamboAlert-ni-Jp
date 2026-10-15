@@ -32,8 +32,8 @@
 #define FORWARD_VIA_MQTT 0
 
 // ---------- Wi-Fi (barangay hall local network) ----------
-#define WIFI_SSID     "No Internet"
-#define WIFI_PASSWORD "Unding.2007"
+#define WIFI_SSID     "PLDT SUPER PRO MAX"
+#define WIFI_PASSWORD "none"
 
 // ---------- HTTP target (only used if FORWARD_VIA_HTTP is 1) ----------
 #define SERVER_URL "http://192.168.1.17:3000/api/telemetry"
