@@ -1,9 +1,13 @@
 /**
  * Root backend (auth + telemetry + citizen SOS GPS).
  * Local LAN: http://<PC-LAN-IP>:3000
- * Cloud: https://your-deployed-backend.example.com
+ * Cloud/Render: https://your-app-name.onrender.com
  *
- * UPDATE THIS to the PC's current LAN IP whenever the network changes.
- * Run `ipconfig` (Windows) or `ip addr` (Linux/Mac) to find the current IP.
+ * ── HOW TO SWITCH ─────────────────────────────────────────────────────────
+ * LAN dev:   set to  http://192.168.x.x:3000   (run ipconfig to find your IP)
+ * Render:    set to  https://your-app-name.onrender.com
+ *
+ * After changing this value, rebuild the app (expo run:android) for it to take effect.
+ * ──────────────────────────────────────────────────────────────────────────
  */
-export const API_BASE_URL = '';
+export const API_BASE_URL = 'http://10.207.243.205:3000';

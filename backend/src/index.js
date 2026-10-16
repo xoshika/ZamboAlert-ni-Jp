@@ -136,14 +136,18 @@ app.post('/api/telemetry', (req, res) => {
 });
 
 app.get('/api/telemetry', (req, res) => {
-  const cutoff = Date.now() - 90 * 1000;
+  const podCutoff = Date.now() - 90 * 1000;            // hardware pods: 90 s
+  const citizenCutoff = Date.now() - 10 * 60 * 1000;  // citizen app virtual pods: 10 min (matches /api/sos TTL)
   const telemetry = readDB().podTelemetry;
   const reports = Array.isArray(telemetry) ? telemetry : [];
   return res.json(
     reports
       .filter((report) => {
         const receivedAt = Date.parse(report.receivedAt);
-        return Number.isFinite(receivedAt) && receivedAt >= cutoff;
+        if (!Number.isFinite(receivedAt)) return false;
+        // Virtual pods injected from citizen app use the longer citizen SOS TTL
+        const cutoff = report.gatewayId === 'CITIZEN-APP-GATEWAY' ? citizenCutoff : podCutoff;
+        return receivedAt >= cutoff;
       })
       .sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt)),
   );

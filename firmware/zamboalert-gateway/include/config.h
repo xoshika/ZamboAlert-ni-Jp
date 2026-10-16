@@ -33,7 +33,7 @@
 
 // ---------- Wi-Fi (barangay hall local network) ----------
 #define WIFI_SSID     "PLDT SUPER PRO MAX"
-#define WIFI_PASSWORD "none"
+#define WIFI_PASSWORD "meowmeow"
 
 // ---------- HTTP target (only used if FORWARD_VIA_HTTP is 1) ----------
 #define SERVER_URL "http://192.168.1.17:3000/api/telemetry"

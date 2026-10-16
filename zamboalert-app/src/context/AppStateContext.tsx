@@ -89,10 +89,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   /** Best-effort phone GPS upload for web/cloud map (does not block BLE SOS). */
   async function postCitizenSos(type: string, position: Coords | null) {
-    if (!position) {
-      addLog('info', 'Map upload skipped — no GPS fix yet');
-      return;
-    }
+    // Use real coords if available; fall back to a placeholder so the server
+    // still receives and stores the SOS alert even without a GPS fix.
+    const lat = position?.lat ?? 0;
+    const lng = position?.lng ?? 0;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/sos`, {
@@ -100,8 +100,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: clientIdRef.current,
-          lat: position.lat,
-          lng: position.lng,
+          lat,
+          lng,
           disasterType: type,
           name: user?.name || 'Citizen',
         }),
@@ -111,7 +111,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
       addLog(
         'sos',
-        `Phone GPS sent to map — ${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}`,
+        position
+          ? `SOS sent to server — ${position.lat.toFixed(5)}, ${position.lng.toFixed(5)}`
+          : 'SOS sent to server — no GPS fix (location unavailable)',
       );
     } catch (error) {
       console.error('Failed to post citizen SOS GPS', error);
@@ -136,6 +138,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }
 
   async function startBeacon(type: string) {
+    // 1. Activate SOS state immediately — gives instant UI feedback
+    setSosActive(true);
+    setDisasterType(type as DisasterType);
+    addLog('sos', `SOS started — ${type.toUpperCase()} emergency`);
+
+    // 2. HTTP upload — works on Expo Go and native builds (no BLE required)
+    const position = await refreshCoords();
+    void postCitizenSos(type, position);
+
+    // 3. BLE broadcast — best-effort secondary channel for offline mesh
     try {
       if (
         !BLEAdvertiser ||
@@ -143,7 +155,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         typeof BLEAdvertiser.setCompanyId !== 'function' ||
         typeof BLEAdvertiser.broadcast !== 'function'
       ) {
-        throw new Error('The BLE advertiser is missing from this app build. Rebuild and reinstall the native app.');
+        addLog('info', 'BLE not available in this build — SOS sent via network only');
+        return;
       }
 
       if (Platform.OS === 'android' && Number(Platform.Version) >= 31) {
@@ -154,11 +167,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const denied = Object.values(permissions).some(
           (permission) => permission !== PermissionsAndroid.RESULTS.GRANTED,
         );
-        if (denied) throw new Error('Allow Nearby devices permissions to broadcast an SOS.');
+        if (denied) {
+          addLog('info', 'BLE permission denied — SOS sent via network only');
+          return;
+        }
       }
 
       if (!(await BLEAdvertiser.isActive())) {
-        throw new Error('Turn on Bluetooth to broadcast an SOS.');
+        addLog('info', 'Bluetooth off — SOS sent via network only');
+        return;
       }
 
       BLEAdvertiser.setCompanyId(0xffff);
@@ -169,34 +186,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         includeTxPowerLevel: false,
         connectable: false,
       });
-
       setBluetoothOn(true);
-      setSosActive(true);
-      setDisasterType(type as DisasterType);
-      addLog('sos', `SOS beacon started — ${type.toUpperCase()} emergency — broadcasting over BLE`);
-
-      const position = await refreshCoords();
-      void postCitizenSos(type, position);
+      addLog('sos', 'BLE beacon broadcasting — offline mesh active');
     } catch (error) {
-      console.error('Failed to start BLE SOS beacon', error);
-      const message = error instanceof Error ? error.message : 'Bluetooth advertising failed.';
-      Alert.alert('Could not start SOS beacon', message);
+      console.error('BLE broadcast failed (SOS still active via network)', error);
+      addLog('info', 'BLE broadcast failed — SOS active via network only');
     }
   }
 
   async function stopBeacon() {
-    try {
-      await BLEAdvertiser.stopBroadcast();
-      addLog('info', 'SOS beacon stopped');
-    } catch (error) {
-      console.error('Failed to stop BLE SOS beacon', error);
-      Alert.alert('Could not confirm beacon stop', 'Bluetooth may have stopped broadcasting, but the app could not confirm it.');
-    }
-
-    setBluetoothOn(false);
     setSosActive(false);
     setDisasterType(null);
+    setBluetoothOn(false);
     void clearCitizenSos();
+
+    try {
+      if (BLEAdvertiser && typeof BLEAdvertiser.stopBroadcast === 'function') {
+        await BLEAdvertiser.stopBroadcast();
+      }
+      addLog('info', 'SOS beacon stopped');
+    } catch (error) {
+      console.error('BLE stop failed', error);
+      addLog('info', 'SOS stopped (BLE stop confirmation unavailable)');
+    }
   }
 
   return (
