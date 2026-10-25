@@ -4,5 +4,10 @@
   "scripts": {
     "start": "cd backend && npm start"
   },
-  "workspaces": ["backend"]
+  "workspaces": [
+    "backend"
+  ],
+  "dependencies": {
+    "expo": "^58.0.19"
+  }
 }

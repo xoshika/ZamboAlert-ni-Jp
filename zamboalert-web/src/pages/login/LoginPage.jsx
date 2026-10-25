@@ -40,8 +40,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const resendRef = useRef(null);
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const [lockoutTime, setLockoutTime] = useState(0);
   const [mfaCode, setMfaCode] = useState("123456");
   const [strength, setStrength] = useState({
     score: 0,
@@ -59,7 +57,7 @@ export default function LoginPage() {
     ""
   ).replace(/\/$/, "");
 
-  const API_PORTS = [Number(import.meta.env.VITE_API_PORT || 5000), 5001, 5002, 5003, 5010];
+  const API_PORTS = [Number(import.meta.env.VITE_API_PORT || 3000), 3000, 5000, 5001, 5002, 5003, 5010];
 
   const apiRequest = async (endpoint, options = {}) => {
     if (API_BASE_URL) {
@@ -146,26 +144,7 @@ export default function LoginPage() {
     setStrength({ score: count, label, color, checks });
   }, [password]);
 
-  useEffect(() => {
-    if (lockoutTime > 0) {
-      timerRef.current = setInterval(() => {
-        setLockoutTime((time) => {
-          if (time <= 1) {
-            clearInterval(timerRef.current);
-            setView("login");
-            setFailedAttempts(0);
-            return 0;
-          }
-          return time - 1;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [lockoutTime]);
-
+  
   const showNotificationMsg = (msg, type = "error") => {
     if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
     setNotification({ msg, type });
@@ -200,42 +179,53 @@ export default function LoginPage() {
   const handleLogin = async (e) => {
     e.preventDefault();
     if (isLoggingInRef.current) return;
-    if (failedAttempts >= 2) {
-      setView("locked");
-      setLockoutTime(30);
-      return;
-    }
 
     isLoggingInRef.current = true;
     setIsLoggingIn(true);
 
     try {
+      const cleanEmail = username.trim();
       const response = await apiRequest("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({
+          email: cleanEmail,
+          username: cleanEmail,
+          password,
+        }),
       });
       const data = await response.json();
 
       if (response.ok) {
-        setView("mfa");
-        setResendTimer(60);
-        setEmailOpened(false);
-        showNotificationMsg(data.message || "2FA Code sent to your official email.", "success");
-        if (data.code) {
-          setTwoFactorCode(data.code);
+        if (data.requiresVerification) {
+          setEmail(data.email || cleanEmail);
+          setView("verify");
+          showNotificationMsg("Your email is not verified yet. A verification code has been sent to your email.", "warning");
+          return;
         }
+
+        // Direct dashboard login
+        const token = data.session?.token || data.token || `token-${Date.now()}`;
+        const expiry = data.session?.expiresAt || Date.now() + 24 * 60 * 60 * 1000;
+        localStorage.setItem(
+          "zamboalert_auth",
+          JSON.stringify({
+            token,
+            user: data.user,
+            expiry,
+          })
+        );
+        showNotificationMsg("Signed in successfully!", "success");
+        navigate("/dashboard");
       } else if (response.status === 403 && data.unverified) {
-        setEmail(data.email);
+        setEmail(data.email || cleanEmail);
         setView("verify");
-        showNotificationMsg(data.message, "warning");
+        showNotificationMsg(data.message || data.error || "Account requires verification.", "warning");
       } else {
-        const nextAttempt = failedAttempts + 1;
-        setFailedAttempts(nextAttempt);
-        showNotificationMsg(`${data.message || "Invalid username or password!"} Attempt ${nextAttempt}/3.`, "error");
+        showNotificationMsg(data.error || data.message || "Invalid email or password!", "error");
       }
     } catch (error) {
-      showNotificationMsg("Cannot connect to backend server. Make sure it is running.", "error");
+      showNotificationMsg("Cannot connect to backend server. Make sure it is running on port 3000.", "error");
     } finally {
       isLoggingInRef.current = false;
       setIsLoggingIn(false);
@@ -344,9 +334,7 @@ export default function LoginPage() {
 
       if (response.ok) {
         showNotificationMsg(data.message || "Password reset code sent to your email.", "success");
-        if (data.code) {
-          setResetCode(data.code);
-        }
+        
         setView("reset_password");
         setVerificationCode("");
         setPassword("");
@@ -782,9 +770,7 @@ export default function LoginPage() {
                             const data = await response.json();
                             if (response.ok) {
                               showNotificationMsg(data.message || "A new MFA code has been sent to your email.", "success");
-                              if (data.code) {
-                                setTwoFactorCode(data.code);
-                              }
+                              
                               setResendTimer(60);
                               setEmailOpened(false);
                             } else {
@@ -823,26 +809,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            {view === "locked" && (
-              <div className="text-center py-4">
-                <div className="w-16 h-16 rounded-full bg-rose-50 flex items-center justify-center mx-auto mb-4">
-                  <ShieldAlert className="text-red-700 h-8 w-8 animate-bounce" />
-                </div>
-                <h2 className="text-lg font-bold text-slate-900 mb-2">Account Temporarily Locked</h2>
-                <p className="text-xs text-slate-500 max-w-xs mx-auto mb-5">
-                  Too many failed authentication attempts. Access is restricted for security policies.
-                </p>
-
-                <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 inline-flex items-center gap-3 mb-6">
-                  <Clock className="text-red-700 h-5 w-5 animate-pulse" />
-                  <div className="text-left">
-                    <span className="text-[9px] font-mono text-red-700 uppercase tracking-widest block">Lockout Timer</span>
-                    <span className="text-lg font-mono text-red-700 font-bold">{lockoutTime} seconds remaining</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
+            
             {view === "forgot_password" && (
               <div>
                 <div className="flex items-center gap-2.5 mb-4">

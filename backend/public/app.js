@@ -1,3 +1,10 @@
+// Admin API Key helper
+function getAdminHeaders() {
+  const params = new URLSearchParams(window.location.search);
+  const key = params.get('adminKey') || localStorage.getItem('ZAMBO_ADMIN_KEY') || '';
+  return key ? { 'X-Admin-Key': key } : {};
+}
+
 // ── ZamboAlert Admin Control Dashboard Logic ────────────────────────────────
 
 let rescuers = [];
@@ -40,7 +47,7 @@ function showToast(message, type = 'success') {
 // Fetch Stats from Backend
 async function fetchStats() {
   try {
-    const res = await fetch('/api/admin/stats');
+    const res = await fetch('/api/admin/stats', { headers: getAdminHeaders() });
     if (!res.ok) throw new Error('Failed to load stats');
     stats = await res.json();
     
@@ -57,7 +64,7 @@ async function fetchStats() {
 // Fetch Rescuers list from Backend
 async function fetchRescuers() {
   try {
-    const res = await fetch('/api/admin/rescuers');
+    const res = await fetch('/api/admin/rescuers', { headers: getAdminHeaders() });
     if (!res.ok) throw new Error('Failed to load rescuers');
     rescuers = await res.json();
     renderRescuers();
@@ -201,7 +208,8 @@ function renderRescuers() {
 async function approveRescuer(id) {
   try {
     const res = await fetch(`/api/admin/rescuers/${id}/approve`, {
-      method: 'POST'
+      method: 'POST',
+      headers: { ...getAdminHeaders() }
     });
     if (!res.ok) throw new Error('Approval request failed');
     const data = await res.json();
@@ -221,7 +229,8 @@ async function rejectRescuer(id) {
   if (!confirm('Are you sure you want to revoke verification for this rescuer? They will no longer be able to log in.')) return;
   try {
     const res = await fetch(`/api/admin/rescuers/${id}/reject`, {
-      method: 'POST'
+      method: 'POST',
+      headers: { ...getAdminHeaders() }
     });
     if (!res.ok) throw new Error('Revoke request failed');
     const data = await res.json();

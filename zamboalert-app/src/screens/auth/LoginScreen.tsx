@@ -8,8 +8,10 @@ import WaitingForApprovalModal from '../../components/Approval';
 import {
   InputField,
   ErrorBox,
-  RolePill,
   AuthCardWrapper,
+  RoleSelectStep,
+  SelectedRoleBadge,
+  AuthRole,
 } from './components/AuthComponents';
 import { VerifyEmailView } from './components/VerifyEmailView';
 import { MfaVerifyView } from './components/MfaVerifyView';
@@ -18,6 +20,8 @@ import { ForgotPasswordView } from './components/ForgotPasswordView';
 type AuthNavigation = {
   navigate: (screen: string, params?: Record<string, unknown>) => void;
 };
+
+type Step = 'role' | 'form';
 
 export default function LoginScreen({ navigation }: { navigation: AuthNavigation }) {
   const {
@@ -37,7 +41,8 @@ export default function LoginScreen({ navigation }: { navigation: AuthNavigation
     getLockoutSecondsRemaining,
   } = useAuth();
 
-  const [role, setRole] = useState<'citizen' | 'rescuer'>('citizen');
+  const [step, setStep] = useState<Step>('role');
+  const [role, setRole] = useState<AuthRole>('citizen');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPass] = useState(false);
@@ -62,6 +67,17 @@ export default function LoginScreen({ navigation }: { navigation: AuthNavigation
 
   function handleChange() {
     if (error) clearError();
+  }
+
+  function handleRoleSelect(selected: AuthRole) {
+    setRole(selected);
+    handleChange();
+    setStep('form');
+  }
+
+  function handleChangeRole() {
+    handleChange();
+    setStep('role');
   }
 
   async function handleLogin() {
@@ -115,42 +131,31 @@ export default function LoginScreen({ navigation }: { navigation: AuthNavigation
     );
   }
 
-  // ── Main Screen: Login ──────────────────────────────────────────────────────
+  // ── Step 1: Role selection (no form fields yet) ─────────────────────────────
+  if (step === 'role') {
+    return (
+      <RoleSelectStep
+        mode="signin"
+        onSelect={handleRoleSelect}
+        switchLabel="Don't have an account yet?"
+        switchLinkLabel="Create account"
+        onSwitch={() => navigation.navigate('SignUp')}
+      />
+    );
+  }
+
+  // ── Step 2: Login form (after role chosen) ──────────────────────────────────
   return (
     <AuthCardWrapper>
       <View style={styles.cardHeader}>
-        <Text style={styles.heading}>Welcome back</Text>
+        <Text style={styles.heading}>Sign in</Text>
         <Text style={styles.sub}>
-          Sign in to stay connected and alert responders even during network outages.
+          Enter your credentials to stay connected even during network outages.
         </Text>
       </View>
 
-      {/* Role Selection */}
-      <Text style={styles.fieldLabel}>I am signing in as</Text>
-      <View style={styles.roleGrid}>
-        <RolePill
-          label="Citizen"
-          subtitle="SOS & Emergency"
-          icon="person-circle-outline"
-          active={role === 'citizen'}
-          onPress={() => {
-            setRole('citizen');
-            handleChange();
-          }}
-        />
-        <RolePill
-          label="Rescuer"
-          subtitle="Field Responder"
-          icon="shield-checkmark-outline"
-          active={role === 'rescuer'}
-          onPress={() => {
-            setRole('rescuer');
-            handleChange();
-          }}
-        />
-      </View>
+      <SelectedRoleBadge role={role} mode="signin" onChangeRole={handleChangeRole} />
 
-      {/* Input Fields */}
       <InputField
         label="Email Address"
         icon="mail-outline"
@@ -224,7 +229,6 @@ export default function LoginScreen({ navigation }: { navigation: AuthNavigation
         />
       </View>
 
-      {/* Switch to Sign up */}
       <View style={styles.switchRow}>
         <Text style={styles.switchText}>Don't have an account yet?</Text>
         <Pressable
@@ -250,7 +254,7 @@ export default function LoginScreen({ navigation }: { navigation: AuthNavigation
 
 const styles = StyleSheet.create({
   cardHeader: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   heading: {
     fontFamily: 'Inter_700Bold',
@@ -264,18 +268,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 13.5,
     color: colors.textSecondary,
-  },
-  fieldLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: '#374151',
-    letterSpacing: 0.3,
-    marginBottom: 6,
-  },
-  roleGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 18,
   },
   actionRow: {
     flexDirection: 'row',

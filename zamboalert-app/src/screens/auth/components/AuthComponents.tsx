@@ -38,6 +38,16 @@ export type RolePillProps = {
   onPress: () => void;
 };
 
+export type AuthRole = 'citizen' | 'rescuer';
+
+export type RoleSelectStepProps = {
+  mode: 'signin' | 'register';
+  onSelect: (role: AuthRole) => void;
+  switchLabel: string;
+  switchLinkLabel: string;
+  onSwitch: () => void;
+};
+
 export function InputField({
   label,
   icon,
@@ -179,6 +189,119 @@ export function RolePill({ label, subtitle, icon, active, onPress }: RolePillPro
         </View>
       )}
     </Pressable>
+  );
+}
+
+/** First-step screen: pick Citizen or Rescuer before showing form fields. */
+export function RoleSelectStep({
+  mode,
+  onSelect,
+  switchLabel,
+  switchLinkLabel,
+  onSwitch,
+}: RoleSelectStepProps) {
+  const isSignIn = mode === 'signin';
+  const verb = isSignIn ? 'signing in' : 'registering';
+
+  return (
+    <AuthCardWrapper>
+      <View style={styles.roleSelectHeader}>
+        <Text style={styles.roleSelectHeading}>
+          {isSignIn ? 'Welcome back' : 'Create account'}
+        </Text>
+        <Text style={styles.roleSelectSub}>
+          {isSignIn
+            ? 'Choose how you want to sign in to continue.'
+            : 'Choose your role to start creating your account.'}
+        </Text>
+      </View>
+
+      <View style={styles.roleSelectStack}>
+        <RoleSelectOption
+          title={`I am ${verb} as Citizen`}
+          subtitle="SOS alerts & emergency tools"
+          icon="person-circle-outline"
+          onPress={() => onSelect('citizen')}
+        />
+        <RoleSelectOption
+          title={`I am ${verb} as Rescuer`}
+          subtitle="Field responder access"
+          icon="shield-checkmark-outline"
+          onPress={() => onSelect('rescuer')}
+        />
+      </View>
+
+      <View style={styles.roleSelectSwitchRow}>
+        <Text style={styles.roleSelectSwitchText}>{switchLabel}</Text>
+        <Pressable onPress={onSwitch} hitSlop={8} style={styles.roleSelectSwitchLinkWrap}>
+          <Text style={styles.roleSelectSwitchLink}>{switchLinkLabel}</Text>
+          <Ionicons name="arrow-forward" size={14} color={colors.primary} />
+        </Pressable>
+      </View>
+    </AuthCardWrapper>
+  );
+}
+
+function RoleSelectOption({
+  title,
+  subtitle,
+  icon,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.roleSelectCard,
+        pressed && styles.roleSelectCardPressed,
+      ]}
+    >
+      <View style={styles.roleSelectIconWrap}>
+        <Ionicons name={icon} size={26} color={colors.primary} />
+      </View>
+      <View style={styles.roleSelectTextWrap}>
+        <Text style={styles.roleSelectTitle}>{title}</Text>
+        <Text style={styles.roleSelectSubtitle}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+    </Pressable>
+  );
+}
+
+/** Compact selected-role chip shown above form fields, with change action. */
+export function SelectedRoleBadge({
+  role,
+  mode,
+  onChangeRole,
+}: {
+  role: AuthRole;
+  mode: 'signin' | 'register';
+  onChangeRole: () => void;
+}) {
+  const verb = mode === 'signin' ? 'Signing in' : 'Registering';
+  const isCitizen = role === 'citizen';
+
+  return (
+    <View style={styles.selectedRoleRow}>
+      <View style={styles.selectedRoleBadge}>
+        <Ionicons
+          name={isCitizen ? 'person-circle-outline' : 'shield-checkmark-outline'}
+          size={16}
+          color={colors.primary}
+        />
+        <Text style={styles.selectedRoleText}>
+          {verb} as {isCitizen ? 'Citizen' : 'Rescuer'}
+        </Text>
+      </View>
+      <Pressable onPress={onChangeRole} hitSlop={8} style={styles.changeRoleBtn}>
+        <Text style={styles.changeRoleText}>Change</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -459,6 +582,120 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   backLinkText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  roleSelectHeader: {
+    marginBottom: 24,
+  },
+  roleSelectHeading: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 26,
+    color: colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  roleSelectSub: {
+    marginTop: 6,
+    lineHeight: 20,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13.5,
+    color: colors.textSecondary,
+  },
+  roleSelectStack: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  roleSelectCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FAFAFB',
+  },
+  roleSelectCardPressed: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(224, 52, 43, 0.04)',
+    opacity: 0.92,
+  },
+  roleSelectIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(224, 52, 43, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roleSelectTextWrap: {
+    flex: 1,
+  },
+  roleSelectTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 15,
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  roleSelectSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 3,
+  },
+  roleSelectSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    gap: 6,
+  },
+  roleSelectSwitchText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  roleSelectSwitchLinkWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  roleSelectSwitchLink: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 13,
+    color: colors.primary,
+  },
+  selectedRoleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  selectedRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(224, 52, 43, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(224, 52, 43, 0.2)',
+  },
+  selectedRoleText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12.5,
+    color: colors.primary,
+  },
+  changeRoleBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  changeRoleText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
     color: colors.textSecondary,

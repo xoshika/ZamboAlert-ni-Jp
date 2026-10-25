@@ -11,7 +11,8 @@
       "isVerified": true,
       "mfaEnabled": false,
       "mfaSecret": "",
-      "contactNumber": "+639123456789"
+      "contactNumber": "+639123456789",
+      "passwordResetCode": "821228"
     },
     {
       "id": "2",

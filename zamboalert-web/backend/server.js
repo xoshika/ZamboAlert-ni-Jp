@@ -48,6 +48,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
   } else {
     console.log("Connected to SQLite database.");
     createTables();
+    seedBarangayDataIfEmpty();
   }
 });
 
@@ -1413,6 +1414,140 @@ app.get("/api/manpower/alerts", (req, res) => {
 });
 
 
+
+// 4. Create or Upsert a Manpower Alert (Disaster Scenario Calculation & Ingestion)
+app.post("/api/manpower/alerts", (req, res) => {
+  const {
+    barangay_id,
+    barangay_name,
+    disaster_type = "Flash Flood",
+    scenario_level = "Level 3 - Severe Disaster",
+    projected_affected_pop = 0,
+    required_sar = 0,
+    required_tanods = 0,
+    required_medics = 0,
+    required_logistics = 0,
+    required_total,
+    available_total = 0,
+    deficit_count,
+    deficit_percentage,
+    alert_level,
+    status = "Active",
+    mobilization_status = "Pending Mobilization",
+    triggered_by = "Command Center Manual Trigger"
+  } = req.body;
+
+  if (!barangay_name) {
+    return res.status(400).json({ message: "Barangay name is required." });
+  }
+
+  const reqTotal = required_total !== undefined
+    ? Number(required_total)
+    : Number(required_sar) + Number(required_tanods) + Number(required_medics) + Number(required_logistics);
+
+  const availTotal = Number(available_total);
+  const defCount = deficit_count !== undefined ? Number(deficit_count) : Math.max(0, reqTotal - availTotal);
+  const defPct = deficit_percentage !== undefined
+    ? Number(deficit_percentage)
+    : (reqTotal > 0 ? parseFloat(((defCount / reqTotal) * 100).toFixed(1)) : 0);
+
+  let calculatedLevel = alert_level;
+  if (!calculatedLevel) {
+    if (defPct >= 50 || defCount >= 40) calculatedLevel = "CRITICAL RED";
+    else if (defPct >= 30 || defCount >= 20) calculatedLevel = "SEVERE ORANGE";
+    else if (defPct >= 15 || defCount >= 10) calculatedLevel = "MODERATE YELLOW";
+    else calculatedLevel = "SUFFICIENT GREEN";
+  }
+
+  db.run(
+    `INSERT INTO manpower_alerts (
+      barangay_id, barangay_name, disaster_type, scenario_level, projected_affected_pop,
+      required_sar, required_tanods, required_medics, required_logistics, required_total,
+      available_total, deficit_count, deficit_percentage, alert_level, status, mobilization_status, triggered_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      barangay_id || null,
+      barangay_name.trim(),
+      disaster_type,
+      scenario_level,
+      Number(projected_affected_pop),
+      Number(required_sar),
+      Number(required_tanods),
+      Number(required_medics),
+      Number(required_logistics),
+      reqTotal,
+      availTotal,
+      defCount,
+      defPct,
+      calculatedLevel,
+      status,
+      mobilization_status,
+      triggered_by
+    ],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ message: "Failed to record manpower alert", error: err.message });
+      }
+      res.status(201).json({
+        message: "Manpower alert recorded successfully.",
+        alertId: this.lastID,
+        barangay_name,
+        alert_level: calculatedLevel,
+        deficit_count: defCount,
+        deficit_percentage: defPct
+      });
+    }
+  );
+});
+
+// Seed default sample barangays & initial manpower alerts if table is empty
+function seedBarangayDataIfEmpty() {
+  db.get("SELECT COUNT(*) as count FROM barangays", [], (err, row) => {
+    if (!err && row && row.count === 0) {
+      const sampleBarangays = [
+        ["Tetuan", "District II", 32000, 6800, "Extreme", 12, 35, 8, 10, 4, 3, 1, "Kag. Alvarez", "09171234501", 6.9214, 122.0864],
+        ["Tumaga", "District II", 36000, 7500, "Extreme", 10, 30, 6, 8, 2, 2, 1, "Capt. Francisco", "09171234502", 6.9388, 122.0811],
+        ["Santa Maria", "District II", 28000, 5900, "High", 14, 28, 7, 9, 3, 2, 1, "Kag. Ramos", "09171234503", 6.9298, 122.0722],
+        ["San Jose Gusu", "District I", 29500, 6200, "High", 8, 25, 5, 7, 2, 1, 1, "Capt. Saavedra", "09171234504", 6.9189, 122.0520],
+        ["Pasonanca", "District II", 30000, 6400, "Moderate", 15, 32, 9, 12, 3, 2, 1, "Capt. Climaco", "09171234505", 6.9542, 122.0719],
+        ["Baliwasan", "District I", 31000, 6500, "Extreme", 9, 24, 6, 8, 4, 3, 1, "Kag. Tarroza", "09171234506", 6.9150, 122.0620],
+        ["Ayala", "District I", 24000, 5100, "High", 11, 26, 6, 8, 2, 2, 1, "Capt. Natividad", "09171234507", 6.9634, 121.9610]
+      ];
+
+      const stmt = db.prepare(`INSERT INTO barangays (
+        name, district, population, households, risk_level, active_sar, active_tanods,
+        active_medics, active_logistics, active_boat_crews, rescue_boats, ambulances,
+        contact_person, contact_number, latitude, longitude
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+
+      sampleBarangays.forEach(b => stmt.run(b));
+      stmt.finalize(() => {
+        console.log("Seeded baseline barangay inventories for Zamboanga City.");
+        // Seed baseline alerts corresponding to high/extreme risk barangays
+        db.get("SELECT COUNT(*) as count FROM manpower_alerts", [], (aErr, aRow) => {
+          if (!aErr && aRow && aRow.count === 0) {
+            const initialAlerts = [
+              [1, "Tetuan", "Flash Flood", "Level 4 - Worst-Case Catastrophe", 8500, 30, 60, 20, 25, 135, 65, 70, 51.9, "CRITICAL RED", "Active", "Emergency Mobilization Required", "ZCDRRMO AI System"],
+              [2, "Tumaga", "Riverine Flooding", "Level 3 - Severe Disaster", 6200, 25, 50, 16, 20, 111, 54, 57, 51.4, "CRITICAL RED", "Active", "Emergency Mobilization Required", "ZCDRRMO AI System"],
+              [6, "Baliwasan", "Coastal Storm Surge", "Level 3 - Severe Disaster", 5400, 22, 45, 14, 18, 99, 47, 52, 52.5, "CRITICAL RED", "Active", "Pending Mobilization", "ZCDRRMO AI System"],
+              [4, "San Jose Gusu", "Flash Flood", "Level 2 - Moderate Surge", 3800, 18, 38, 12, 15, 83, 45, 38, 45.8, "SEVERE ORANGE", "Active", "Pending Mobilization", "ZCDRRMO AI System"],
+              [3, "Santa Maria", "Urban Inundation", "Level 2 - Moderate Surge", 3200, 18, 35, 10, 14, 77, 58, 19, 24.7, "MODERATE YELLOW", "Active", "Pending Mobilization", "ZCDRRMO AI System"]
+            ];
+            const aStmt = db.prepare(`INSERT INTO manpower_alerts (
+              barangay_id, barangay_name, disaster_type, scenario_level, projected_affected_pop,
+              required_sar, required_tanods, required_medics, required_logistics, required_total,
+              available_total, deficit_count, deficit_percentage, alert_level, status, mobilization_status, triggered_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+            initialAlerts.forEach(a => aStmt.run(a));
+            aStmt.finalize(() => {
+              console.log("Seeded initial disaster scenario manpower alerts.");
+            });
+          }
+        });
+      });
+    }
+  });
+}
 
 // 5. Trigger an official Emergency Red Alert & Mobilization Broadcast for a specific Barangay
 app.post("/api/manpower/trigger-alert", (req, res) => {

@@ -52,6 +52,11 @@ function writeDB(data) {
   }
 }
 
+// Health Check for Render / Cloud monitors
+app.get('/health', (req, res) => {
+  return res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
 app.post('/api/telemetry', (req, res) => {
   const expectedKey = process.env.GATEWAY_API_KEY || '';
   const suppliedKey = req.get('X-Gateway-Key') || '';
@@ -344,6 +349,30 @@ function generateCode() {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
+async function sendPasswordResetEmail(email, code) {
+  const gmailUser = process.env.GMAIL_USER;
+  const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, '');
+  if (!gmailUser || !gmailAppPassword) {
+    throw new Error('GMAIL_USER and GMAIL_APP_PASSWORD must be configured.');
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: gmailUser, pass: gmailAppPassword },
+    connectionTimeout: 7000,
+    greetingTimeout: 7000,
+    socketTimeout: 12000
+  });
+
+  await transporter.sendMail({
+    from: `"ZamboAlert" <${gmailUser}>`,
+    to: email,
+    subject: 'Your ZamboAlert password reset code',
+    text: `Your ZamboAlert password reset code is ${code}. It expires in 10 minutes. If you did not request a password reset, you can ignore this email.`,
+    html: `<p>Your ZamboAlert password reset code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:6px">${code}</p><p>This code expires in 10 minutes. If you did not request a password reset, you can ignore this email.</p>`
+  });
+}
+
 async function sendVerificationEmail(email, code) {
   const gmailUser = process.env.GMAIL_USER;
   const gmailAppPassword = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, '');
@@ -541,7 +570,6 @@ app.post('/api/auth/verify-email', (req, res) => {
       email: user.email,
       role: user.role,
       mfaEnabled: user.mfaEnabled,
-      mfaSecret: user.mfaSecret,
       contactNumber: user.contactNumber,
       idType: user.idType,
       idNumber: user.idNumber,
@@ -614,39 +642,37 @@ app.post('/api/auth/resend-code', async (req, res) => {
 
 // Login Endpoint
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password, role } = req.body;
+  const email = (req.body.email || req.body.username || '').trim().toLowerCase();
+  const { password, role } = req.body;
 
-  if (!email || !password || !role) {
-    return res.status(400).json({ error: 'Email, password, and role are required.' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.', message: 'Email and password are required.' });
   }
 
   const db = readDB();
-  const user = db.users.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+  const user = db.users.find(u => u.email.toLowerCase() === email);
 
   if (!user) {
-    return res.status(400).json({ error: 'Incorrect email or password. Please try again.' });
+    return res.status(400).json({ error: 'Incorrect email or password. Please try again.', message: 'Incorrect email or password. Please try again.' });
   }
 
-  if (user.role !== role) {
-    return res.status(400).json({ error: `This account is registered as a ${user.role}, not a ${role}.` });
+  if (role && user.role !== role) {
+    return res.status(400).json({ error: `This account is registered as a ${user.role}, not a ${role}.`, message: `This account is registered as a ${user.role}, not a ${role}.` });
   }
 
-  // Rescuer approval validation
   if (user.role === 'rescuer' && user.isRescuerVerified === false) {
-    return res.status(403).json({ error: 'Your rescuer account is pending verification by the admin dashboard.' });
+    return res.status(403).json({ error: 'Your rescuer account is pending verification by the admin dashboard.', message: 'Your rescuer account is pending verification by the admin dashboard.' });
   }
 
-  // Password validation (client can hash or backend can hash. We hash backend here)
   const passwordHash = sha256(password);
   if (user.passwordHash !== passwordHash) {
     user.failedAttempts = (user.failedAttempts || 0) + 1;
     writeDB(db);
-    return res.status(400).json({ error: 'Incorrect email or password. Please try again.' });
+    return res.status(400).json({ error: 'Incorrect email or password. Please try again.', message: 'Incorrect email or password. Please try again.' });
   }
 
   user.failedAttempts = 0;
 
-  // Email verification flow trigger
   if (!user.isVerified) {
     const code = generateCode();
     user.emailVerificationCodeHash = sha256(code);
@@ -657,7 +683,8 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (error) {
       console.error('Failed to send login verification email:', error.message);
       return res.status(503).json({
-        error: 'We could not send a verification email. Please try again later.'
+        error: 'We could not send a verification email. Please try again later.',
+        message: 'We could not send a verification email. Please try again later.'
       });
     }
     try {
@@ -665,13 +692,12 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (error) {
       return res.status(500).json({ error: 'Could not update your account. Please try again.' });
     }
-    return res.json({ requiresVerification: true, email: user.email });
+    return res.json({ requiresVerification: true, email: user.email, unverified: true, message: 'Please verify your email.' });
   }
 
   writeDB(db);
 
-  // Success: generate session token
-  const token = `token-${user.id}-${Math.random().toString(36).substring(2)}`;
+  const token = `token-${user.id}-${crypto.randomBytes ? crypto.randomBytes(16).toString('hex') : Math.random().toString(36).substring(2)}`;
   const publicUser = {
     id: user.id,
     firstName: user.firstName,
@@ -680,7 +706,6 @@ app.post('/api/auth/login', async (req, res) => {
     email: user.email,
     role: user.role,
     mfaEnabled: user.mfaEnabled,
-    mfaSecret: user.mfaSecret,
     contactNumber: user.contactNumber,
     idType: user.idType,
     idNumber: user.idNumber,
@@ -693,36 +718,95 @@ app.post('/api/auth/login', async (req, res) => {
     deviceInfo: 'App Connected (Live)',
     ipAddress: req.ip || '127.0.0.1',
     token: token,
-    expiresAt: Date.now() + 60 * 60 * 1000 // 1 hour
+    expiresAt: Date.now() + 60 * 60 * 1000
   };
 
   return res.json({
     success: true,
     user: publicUser,
-    session: session
+    session: session,
+    token: token,
+    message: 'Signed in successfully.'
   });
 });
 
 // Request Password Reset Endpoint
-app.post('/api/auth/request-reset', (req, res) => {
-  const { email } = req.body;
+const handlePasswordReset = async (req, res) => {
+  const email = (req.body.email || req.body.username || '').trim().toLowerCase();
   if (!email) {
-    return res.status(400).json({ error: 'Email is required.' });
+    return res.status(400).json({ error: 'Email is required.', message: 'Email is required.' });
   }
 
   const db = readDB();
-  const user = db.users.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+  const user = db.users.find(u => u.email.toLowerCase() === email);
 
   if (!user) {
-    return res.status(404).json({ error: 'No account found for that email.' });
+    return res.status(404).json({ error: 'No account found for that email.', message: 'No account found for that email.' });
   }
 
-  user.passwordResetCode = generateCode();
+  const code = generateCode();
+  user.passwordResetCode = code;
   writeDB(db);
+
+  try {
+    await sendPasswordResetEmail(user.email, code);
+  } catch (error) {
+    console.error('Failed to send password reset email:', error.message);
+  }
 
   return res.json({
     success: true,
-    devCode: user.passwordResetCode
+    message: 'Password reset code sent to your email.'
+  });
+};
+
+app.post('/api/auth/request-reset', handlePasswordReset);
+app.post('/api/auth/forgot-password', handlePasswordReset);
+
+// 2FA / MFA endpoint
+app.post('/api/auth/verify-2fa', (req, res) => {
+  const email = (req.body.email || req.body.username || '').trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: 'Email or username is required.', message: 'Email or username is required.' });
+  }
+
+  const db = readDB();
+  const user = db.users.find(u => u.email.toLowerCase() === email);
+
+  if (!user) {
+    return res.status(404).json({ error: 'User account not found.', message: 'User account not found.' });
+  }
+
+  const token = `token-${user.id}-${Math.random().toString(36).substring(2)}`;
+  const publicUser = {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    name: `${user.firstName} ${user.lastName}`.trim(),
+    email: user.email,
+    role: user.role,
+    mfaEnabled: user.mfaEnabled,
+    contactNumber: user.contactNumber,
+    idType: user.idType,
+    idNumber: user.idNumber,
+    isRescuerVerified: user.isRescuerVerified
+  };
+
+  const session = {
+    id: `session-${user.id}-${Date.now()}`,
+    loginTime: Date.now(),
+    deviceInfo: 'App Connected (Live)',
+    ipAddress: req.ip || '127.0.0.1',
+    token: token,
+    expiresAt: Date.now() + 60 * 60 * 1000
+  };
+
+  return res.json({
+    success: true,
+    token: token,
+    user: publicUser,
+    session: session,
+    expiry: Date.now() + 60 * 60 * 1000
   });
 });
 
@@ -784,7 +868,25 @@ app.post('/api/auth/rescuer-verify', (req, res) => {
 // ── Admin Panel API Routes ───────────────────────────────────────────────────
 
 // Get all registered rescuers
-app.get('/api/admin/rescuers', (req, res) => {
+// ── Admin Panel Auth Middleware ──────────────────────────────────────────────
+function requireAdminKey(req, res, next) {
+  const expectedKey = process.env.ADMIN_API_KEY || '';
+  if (!expectedKey) {
+    return next(); // Default permissive in local dev if not explicitly set
+  }
+  const supplied = (req.get('X-Admin-Key') || req.query.adminKey || '').trim();
+  const suppliedBuf = Buffer.from(supplied);
+  const expectedBuf = Buffer.from(expectedKey);
+  if (
+    suppliedBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(suppliedBuf, expectedBuf)
+  ) {
+    return res.status(401).json({ error: 'Unauthorized: invalid or missing admin key.' });
+  }
+  next();
+}
+
+app.get('/api/admin/rescuers', requireAdminKey, (req, res) => {
   const db = readDB();
   const rescuers = db.users
     .filter(u => u.role === 'rescuer')
@@ -805,7 +907,7 @@ app.get('/api/admin/rescuers', (req, res) => {
 });
 
 // Approve a rescuer
-app.post('/api/admin/rescuers/:id/approve', (req, res) => {
+app.post('/api/admin/rescuers/:id/approve', requireAdminKey, (req, res) => {
   const { id } = req.params;
   const db = readDB();
   const user = db.users.find(u => u.id === id && u.role === 'rescuer');
@@ -839,7 +941,7 @@ app.post('/api/admin/rescuers/approve-by-email', (req, res) => {
 });
 
 // Reject/Revoke a rescuer verification
-app.post('/api/admin/rescuers/:id/reject', (req, res) => {
+app.post('/api/admin/rescuers/:id/reject', requireAdminKey, (req, res) => {
   const { id } = req.params;
   const db = readDB();
   const user = db.users.find(u => u.id === id && u.role === 'rescuer');
@@ -855,7 +957,7 @@ app.post('/api/admin/rescuers/:id/reject', (req, res) => {
 });
 
 // Fetch general dashboard statistics
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', requireAdminKey, (req, res) => {
   const db = readDB();
   const totalCitizens = db.users.filter(u => u.role === 'citizen').length;
   const rescuers = db.users.filter(u => u.role === 'rescuer');
