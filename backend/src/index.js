@@ -32,8 +32,8 @@ const POD_TTL_MS               = 90 * 1000;         // 90 s
 const DISASTER_TYPES = new Set(['earthquake', 'flood', 'fire', 'landslide']);
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // CORS — wide open (LAN + cloud usage)
 app.use((req, res, next) => {
@@ -767,12 +767,35 @@ app.post('/api/auth/rescuer-verify', (req, res) => {
 // SECTION 4: Rescuers (SQLite relational table — web admin panel)
 // ══════════════════════════════════════════════════════════════════════════════
 
-// GET /api/rescuers
+// GET /api/rescuers — includes ID photos from matching users row (by email)
 app.get('/api/rescuers', (req, res) => {
-  db.all('SELECT * FROM rescuers ORDER BY created_at DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
-    res.json(rows);
-  });
+  db.all(
+    `SELECT r.*, u.id_front_uri AS id_front_uri, u.id_back_uri AS id_back_uri
+     FROM rescuers r
+     LEFT JOIN users u ON LOWER(TRIM(u.email)) = LOWER(TRIM(r.email)) AND u.role = 'rescuer'
+     ORDER BY r.created_at DESC`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+// GET /api/rescuers/:id — single rescuer with ID document photos for admin review
+app.get('/api/rescuers/:id', (req, res) => {
+  db.get(
+    `SELECT r.*, u.id_front_uri AS id_front_uri, u.id_back_uri AS id_back_uri
+     FROM rescuers r
+     LEFT JOIN users u ON LOWER(TRIM(u.email)) = LOWER(TRIM(r.email)) AND u.role = 'rescuer'
+     WHERE r.id = ?`,
+    [req.params.id],
+    (err, row) => {
+      if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
+      if (!row) return res.status(404).json({ message: 'Rescuer not found.' });
+      res.json(row);
+    }
+  );
 });
 
 // POST /api/rescuers/register — register from mobile app
@@ -823,10 +846,20 @@ app.post('/api/rescuers/verify/:id', (req, res) => {
 
 // DELETE /api/rescuers/:id
 app.delete('/api/rescuers/:id', (req, res) => {
-  db.run('DELETE FROM rescuers WHERE id=?', [req.params.id], function (err) {
-    if (err) return res.status(500).json({ message: 'Failed to delete rescuer', error: err.message });
-    if (this.changes === 0) return res.status(404).json({ message: 'Rescuer not found.' });
-    res.json({ message: 'Rescuer account rejected and deleted successfully.' });
+  db.get('SELECT email FROM rescuers WHERE id=?', [req.params.id], (findErr, row) => {
+    if (findErr) return res.status(500).json({ message: 'Failed to delete rescuer', error: findErr.message });
+    if (!row) return res.status(404).json({ message: 'Rescuer not found.' });
+
+    db.run('DELETE FROM rescuers WHERE id=?', [req.params.id], function (err) {
+      if (err) return res.status(500).json({ message: 'Failed to delete rescuer', error: err.message });
+      if (row.email) {
+        db.run(
+          "UPDATE users SET is_rescuer_verified=0 WHERE LOWER(email)=? AND role='rescuer'",
+          [row.email.toLowerCase()]
+        );
+      }
+      res.json({ message: 'Rescuer account rejected and deleted successfully.' });
+    });
   });
 });
 
@@ -898,6 +931,8 @@ app.get('/api/admin/rescuers', requireAdminKey, (req, res) => {
       id: u.id, firstName: u.first_name, lastName: u.last_name,
       email: u.email, contactNumber: u.contact_number,
       idType: u.id_type, idNumber: u.id_number,
+      idFrontUri: u.id_front_uri || null,
+      idBackUri: u.id_back_uri || null,
       isRescuerVerified: u.is_rescuer_verified,
       isVerified: !!u.is_verified,
     })));

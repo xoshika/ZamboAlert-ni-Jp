@@ -168,9 +168,12 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
   const [modalVisible, setModalVisible] = useState(false);
   const [showWaitingModal, setShowWaitingModal] = useState(false);
   const [activeSide, setActiveSide] = useState<IdSide | null>(null);
+  const [isSliding, setIsSliding] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const idNumberInputRef = useRef<TextInput>(null);
 
   const goToStep = (next: number) => {
+    setIsSliding(true);
     Animated.timing(slideAnim, {
       toValue: -400,
       duration: 200,
@@ -182,7 +185,11 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
         toValue: 0,
         useNativeDriver: true,
         bounciness: 4,
-      }).start();
+      }).start(() => {
+        // Remount step content outside the native transform layer so TextInput
+        // can open the soft keyboard (Android fails when focused under transform).
+        setIsSliding(false);
+      });
     });
   };
 
@@ -292,8 +299,8 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
       // This makes the rescuer appear in the Barangay Admin Web at localhost:5173
       const reg = route.params?.registrationData;
       try {
-        const webDashboardUrl = API_BASE_URL.replace(':3000', ':5000');
-        await fetch(`${webDashboardUrl}/api/rescuers/register`, {
+        // webDashboardUrl synced to API_BASE_URL
+        await fetch(`${API_BASE_URL}/api/rescuers/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -346,9 +353,13 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
 
       <View style={styles.idNumberSection}>
         <Text style={[typography.eyebrow, styles.fieldLabel]}>ID Number</Text>
-        <View style={[styles.idNumberWrap, idNumberFocused && styles.idNumberWrapFocused]}>
+        <Pressable
+          onPress={() => idNumberInputRef.current?.focus()}
+          style={[styles.idNumberWrap, idNumberFocused && styles.idNumberWrapFocused]}
+        >
           <Ionicons name={selectedIdType.icon} size={18} color={idNumberFocused ? colors.primary : colors.textSecondary} />
           <TextInput
+            ref={idNumberInputRef}
             style={styles.idNumberInput}
             placeholder={`Enter your ${selectedIdType.label} number`}
             placeholderTextColor={colors.textMuted}
@@ -356,13 +367,15 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
             onChangeText={setIdNumber}
             autoCapitalize="characters"
             autoCorrect={false}
+            editable
+            showSoftInputOnFocus
             onFocus={() => setIdNumberFocused(true)}
             onBlur={() => setIdNumberFocused(false)}
           />
           {idNumber.length > 0 && (
             <Ionicons name="checkmark-circle" size={18} color={colors.success} />
           )}
-        </View>
+        </Pressable>
       </View>
 
       <Text style={[typography.eyebrow, styles.fieldLabel]}>ID Photos</Text>
@@ -429,11 +442,18 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
-          {step === 0 ? renderStep0() : renderStep1()}
-        </Animated.View>
+        {isSliding ? (
+          <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
+            {step === 0 ? renderStep0() : renderStep1()}
+          </Animated.View>
+        ) : (
+          <View>
+            {step === 0 ? renderStep0() : renderStep1()}
+          </View>
+        )}
       </ScrollView>
 
       <View style={styles.bottomBar}>
@@ -713,7 +733,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.border,
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    height: 52,
     gap: 10,
   },
   idNumberWrapFocused: {
@@ -726,6 +746,8 @@ const styles = StyleSheet.create({
   },
   idNumberInput: {
     flex: 1,
+    height: '100%',
+    paddingVertical: 0,
     fontFamily: fontFamily.medium,
     fontSize: 15,
     color: colors.textPrimary,

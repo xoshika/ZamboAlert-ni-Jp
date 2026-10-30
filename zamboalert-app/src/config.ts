@@ -10,4 +10,4 @@
  * After changing this value, rebuild the app (expo run:android) for it to take effect.
  * ──────────────────────────────────────────────────────────────────────────
  */
-export const API_BASE_URL = 'http://10.207.243.205:3000';
+export const API_BASE_URL = 'http://192.168.254.120:3000';

@@ -1,8 +1,10 @@
+import { useState } from "react";
 import {
   BarChart2,
   CheckCircle,
   Compass,
   Download,
+  Eye,
   Home,
   MessageSquare,
   Printer,
@@ -11,6 +13,7 @@ import {
   ShieldCheck,
   Volume2,
 } from "lucide-react";
+import RescuerReviewModal from "../../components/RescuerReviewModal";
 import PersonnelPage from "../personnel-alert/PersonnelAlertPage";
 import SettingsPage from "../settings/SettingsPage";
 import { fmtTime } from "./dashboardData";
@@ -74,6 +77,20 @@ export default function DashboardContent({
 
   const activeTabMeta = navGroups.flatMap((group) => group.items).find((tab) => tab.id === activeTab);
   const ActiveTabIcon = activeTabMeta?.icon;
+  const [reviewRescuer, setReviewRescuer] = useState(null);
+
+  const handleApproveRescuer = async (dbId) => {
+    await apiFetch(`/api/rescuers/verify/${dbId}`, { method: "POST" });
+    setReviewRescuer(null);
+    fetchRescuers();
+  };
+
+  const handleRejectRescuer = async (dbId) => {
+    if (!window.confirm("Reject this rescuer registration?")) return;
+    await apiFetch(`/api/rescuers/${dbId}`, { method: "DELETE" });
+    setReviewRescuer(null);
+    fetchRescuers();
+  };
 
   const renderMapTab = () => (
     <>
@@ -520,16 +537,21 @@ export default function DashboardContent({
                 <div className="text-xs text-slate-600 mt-1">Phone: {rescuer.unit}</div>
               </div>
               <div className="flex gap-2 pt-2">
-                <button onClick={async () => {
-                  await apiFetch(`/api/rescuers/verify/${rescuer.dbId}`, { method: "POST" });
-                  fetchRescuers();
-                }} className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer">Approve & Verify</button>
-                <button onClick={async () => {
-                  if (window.confirm("Reject this rescuer registration?")) {
-                    await apiFetch(`/api/rescuers/${rescuer.dbId}`, { method: "DELETE" });
-                    fetchRescuers();
-                  }
-                }} className="py-2.5 px-4 border border-slate-200 hover:bg-red-50 hover:text-red-700 text-slate-600 font-bold text-xs rounded-xl transition-colors cursor-pointer">Reject</button>
+                <button
+                  type="button"
+                  onClick={() => setReviewRescuer(rescuer)}
+                  className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Eye size={13} />
+                  Review ID & Details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRejectRescuer(rescuer.dbId)}
+                  className="py-2.5 px-4 border border-slate-200 hover:bg-red-50 hover:text-red-700 text-slate-600 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Reject
+                </button>
               </div>
             </div>
           ))}
@@ -553,6 +575,14 @@ export default function DashboardContent({
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-100">
+      {reviewRescuer && (
+        <RescuerReviewModal
+          rescuer={reviewRescuer}
+          onClose={() => setReviewRescuer(null)}
+          onApprove={handleApproveRescuer}
+          onReject={handleRejectRescuer}
+        />
+      )}
       <header className="h-16 px-4 md:px-6 bg-white border-b border-slate-200 flex items-center justify-between flex-shrink-0 z-40 shadow-xs">
         <div className="flex items-center gap-3 md:gap-4">
           <button onClick={() => setIsMobileSidebarOpen(true)} className="p-2 -ml-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg md:hidden transition-colors cursor-pointer" title="Open Navigation Menu">

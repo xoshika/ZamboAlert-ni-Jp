@@ -6,19 +6,6 @@
     "icon": "./src/assets/zamboalert.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": {
-      "supportsTablet": false,
-      "bundleIdentifier": "com.zamboalert.citizen",
-      "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "ZamboAlert uses Bluetooth to broadcast an SOS beacon that nearby rescuer pods can detect when you have no cellular signal.",
-        "NSBluetoothPeripheralUsageDescription": "ZamboAlert uses Bluetooth to broadcast an SOS beacon that nearby rescuer pods can detect when you have no cellular signal.",
-        "UIBackgroundModes": [
-          "bluetooth-peripheral"
-        ],
-        "NSLocationWhenInUseUsageDescription": "ZamboAlert uses your location to attach coordinates to your SOS beacon when GPS is available.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "ZamboAlert uses your location in the background so rescuers can find you even while the app is minimized."
-      }
-    },
     "android": {
       "package": "com.zamboalert.citizen",
       "usesCleartextTraffic": true,
@@ -28,7 +15,8 @@
         "android.permission.BLUETOOTH_ADVERTISE",
         "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA"
       ],
       "blockedPermissions": [
         "android.permission.BLUETOOTH_SCAN"
@@ -39,6 +27,16 @@
         "projectId": "d24273e9-1a55-4211-9fb7-0a539ff29e95"
       }
     },
-    "owner": "jeypii"
+    "owner": "jeypii",
+    "plugins": [
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": false
+        }
+      ],
+      "expo-location"
+    ]
   }
 }

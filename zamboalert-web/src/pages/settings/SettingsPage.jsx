@@ -334,9 +334,8 @@ export default function SettingsPage() {
       if (response.ok) {
         showToast("Rescuer verified and approved successfully.");
         fetchRescuers();
-        if (selectedRescuerForReview && selectedRescuerForReview.id === id) {
-          setSelectedRescuerForReview((prev) => (prev ? { ...prev, is_verified: 1, status: "available" } : null));
-        }
+        setShowReviewModal(false);
+        setSelectedRescuerForReview(null);
       } else {
         const errData = await response.json();
         alert(errData.message || "Failed to verify rescuer");

@@ -1,19 +1,16 @@
 import {
   AlertTriangle,
   Battery,
-  Check,
   CheckCircle,
   Eye,
-  Info,
   RefreshCw,
   Search,
-  Shield,
   Signal,
   Trash2,
   User,
   Wifi,
-  X,
 } from "lucide-react";
+import RescuerReviewModal from "../../components/RescuerReviewModal";
 import { API_BASE_URL } from "../dashboard/dashboardApi";
 
 export default function RescuersTab({
@@ -280,8 +277,11 @@ export default function RescuersTab({
                               {rescuer.is_verified !== 1 && (
                                 <button
                                   type="button"
-                                  onClick={() => handleVerifyRescuer(rescuer.id)}
-                                  title="Approve & Verify Account"
+                                  onClick={() => {
+                                    setSelectedRescuerForReview(rescuer);
+                                    setShowReviewModal(true);
+                                  }}
+                                  title="Review ID & Approve"
                                   className="p-1 text-emerald-750 hover:text-white bg-emerald-50 hover:bg-emerald-600 border border-emerald-200 hover:border-emerald-600 rounded transition-all cursor-pointer flex items-center justify-center gap-1 text-[9px] font-bold font-sans uppercase px-1.5 py-1"
                                 >
                                   <CheckCircle size={10} />
@@ -436,157 +436,15 @@ export default function RescuersTab({
       )}
 
       {showReviewModal && selectedRescuerForReview && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Shield size={16} className="text-red-500 animate-pulse" />
-                <h3 className="text-xs font-bold uppercase tracking-wider font-mono">
-                  Review Rescuer Account Request
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReviewModal(false);
-                  setSelectedRescuerForReview(null);
-                }}
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="p-5 overflow-y-auto space-y-5 flex-grow select-text">
-              <div>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2 font-mono">Submitted Document Preview</span>
-                <div className="relative overflow-hidden w-full max-w-sm mx-auto aspect-[1.586/1] bg-gradient-to-tr from-slate-950 via-slate-800 to-red-950 rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-col justify-between text-white font-mono uppercase tracking-wider">
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/10 rounded-full blur-2xl" />
-                  <div className="absolute bottom-0 left-0 w-32 h-32 bg-slate-150/5 rounded-full blur-xl" />
-                  <div className="flex justify-between items-start border-b border-slate-700/60 pb-2">
-                    <div>
-                      <div className="text-[10px] font-bold text-red-500">ZAMBOALERT NETWORK</div>
-                      <div className="text-[8px] text-slate-400 font-sans tracking-normal">BDRRM RESCUE UNIT</div>
-                    </div>
-                    <div className="text-[9px] bg-red-950/80 border border-red-800/50 text-red-400 font-bold px-2 py-0.5 rounded">
-                      {selectedRescuerForReview.id_type || "OFFICIAL ID"}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4 my-2 flex-grow items-center">
-                    <div className="w-16 h-16 bg-slate-700 border border-slate-600 rounded-lg flex flex-col items-center justify-center relative overflow-hidden">
-                      <User size={32} className="text-slate-400" />
-                      <div className="absolute bottom-0 inset-x-0 bg-slate-900/80 text-[7px] py-0.5 text-center text-red-405 font-bold">
-                        {selectedRescuerForReview.status || "OFFLINE"}
-                      </div>
-                    </div>
-
-                    <div className="flex-grow space-y-1">
-                      <div>
-                        <div className="text-[8px] text-slate-500 font-sans tracking-normal">FULL NAME</div>
-                        <div className="text-[11px] font-bold text-slate-200">
-                          {selectedRescuerForReview.first_name} {selectedRescuerForReview.last_name}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[8px] text-slate-500 font-sans tracking-normal">ID NUMBER</div>
-                        <div className="text-[10px] font-bold text-slate-300">
-                          {selectedRescuerForReview.id_number || "PENDING"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-end border-t border-slate-700/60 pt-2 text-[8px] text-slate-500 font-sans tracking-normal">
-                    <div>
-                      <span>STATUS: </span>
-                      <span className={selectedRescuerForReview.is_verified ? "text-emerald-400 font-bold" : "text-amber-500 font-bold"}>
-                        {selectedRescuerForReview.is_verified ? "VERIFIED & ACTIVE" : "PENDING VERIFICATION"}
-                      </span>
-                    </div>
-                    <div>
-                      <span>JOINED: </span>
-                      <span className="text-slate-350">{selectedRescuerForReview.created_at ? new Date(selectedRescuerForReview.created_at).toLocaleDateString() : "PENDING"}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-3">
-                <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block font-mono">Registration Information</span>
-
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">First Name</span>
-                    <span className="font-semibold text-slate-800">{selectedRescuerForReview.first_name}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Last Name</span>
-                    <span className="font-semibold text-slate-800">{selectedRescuerForReview.last_name}</span>
-                  </div>
-                  <div className="col-span-2 border-t border-slate-200/60 my-1" />
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Email Address</span>
-                    <span className="font-semibold text-slate-800 font-mono select-all">{selectedRescuerForReview.email}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Phone Number</span>
-                    <span className="font-semibold text-slate-800 font-mono select-all">{selectedRescuerForReview.phone_number || "No phone number"}</span>
-                  </div>
-                  <div className="col-span-2 border-t border-slate-200/60 my-1" />
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Submitted ID Type</span>
-                    <span className="font-semibold text-slate-800">{selectedRescuerForReview.id_type}</span>
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Submitted ID Number</span>
-                    <span className="font-semibold text-slate-800 font-mono">{selectedRescuerForReview.id_number}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-[9.5px] text-slate-500 leading-normal flex items-start gap-1.5 p-2.5 bg-amber-50/50 border border-amber-100 rounded-lg">
-                <Info size={12} className="text-amber-600 shrink-0 mt-0.5" />
-                <p>
-                  Review the details above to match the rescuer's identity. If verified, approve their access to let them start receiving SOS broadcasts on the ZamboAlert Rescuer App.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 border-t border-slate-100 px-4 py-3 flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReviewModal(false);
-                  setSelectedRescuerForReview(null);
-                }}
-                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-650 hover:bg-slate-55 text-[10px] font-bold uppercase rounded-lg transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleRejectRescuer(selectedRescuerForReview.id)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 text-[10px] font-bold uppercase rounded-lg transition-colors cursor-pointer"
-              >
-                <Trash2 size={10} />
-                Reject & Delete
-              </button>
-
-              {!selectedRescuerForReview.is_verified && (
-                <button
-                  type="button"
-                  onClick={() => handleVerifyRescuer(selectedRescuerForReview.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all shadow-xs cursor-pointer"
-                >
-                  <CheckCircle size={10} />
-                  Approve & Verify Account
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <RescuerReviewModal
+          rescuer={selectedRescuerForReview}
+          onClose={() => {
+            setShowReviewModal(false);
+            setSelectedRescuerForReview(null);
+          }}
+          onApprove={handleVerifyRescuer}
+          onReject={handleRejectRescuer}
+        />
       )}
     </div>
   );
