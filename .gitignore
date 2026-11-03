@@ -3,3 +3,9 @@ node_modules/
 .env.*
 !.env.example
 backend/src/db.json
+
+# Local database & secrets
+backend/src/*.db
+backend/src/*.db-wal
+backend/src/*.db-shm
+firmware/**/secrets.h

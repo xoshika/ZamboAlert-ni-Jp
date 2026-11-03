@@ -25,7 +25,12 @@ const { db, podTelemetry, citizenSos } = require('./database');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const JWT_SECRET = process.env.JWT_SECRET || 'zamboalert_secret_jwt_key_12345';
+const IS_PROD = process.env.NODE_ENV === 'production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET is not set. Add it to backend/.env (or the Render env vars).');
+  process.exit(1);
+}
 const VERIFICATION_CODE_TTL_MS = 10 * 60 * 1000;   // 10 min
 const CITIZEN_SOS_TTL_MS       = 10 * 60 * 1000;   // 10 min
 const POD_TTL_MS               = 90 * 1000;         // 90 s
@@ -184,11 +189,11 @@ async function sendMail(to, subject, text, html, code = null) {
       return true;
     } catch (err) {
       console.error(`[SMTP] Failed: ${err.message}`);
-      if (code) console.log(`>>> FALLBACK CODE for ${to}: ${code} <<<`);
+      if (code && !IS_PROD) console.log(`>>> FALLBACK CODE for ${to}: ${code} <<<`);
       return false;
     }
   }
-  console.log(`[No mailer configured] Email to: ${to}${code ? ` | code: ${code}` : ''}`);
+  console.log(`[No mailer configured] Email to: ${to}${code && !IS_PROD ? ` | code: ${code}` : ''}`);
   return false;
 }
 
@@ -215,7 +220,10 @@ function twoFaEmailHtml(username, code) {
 // ── Middleware: Admin key guard ────────────────────────────────────────────────
 function requireAdminKey(req, res, next) {
   const expectedKey = process.env.ADMIN_API_KEY || '';
-  if (!expectedKey) return next(); // permissive in local dev
+  if (!expectedKey) {
+    if (IS_PROD) return res.status(503).json({ error: 'Admin API is not configured on this server.' });
+    return next(); // permissive in local dev only
+  }
   const supplied = (req.get('X-Admin-Key') || req.query.adminKey || '').trim();
   if (!supplied || supplied.length !== expectedKey.length || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expectedKey))) {
     return res.status(401).json({ error: 'Unauthorized: invalid or missing admin key.' });
@@ -396,6 +404,10 @@ app.post('/api/auth/signup', async (req, res) => {
   if (!firstName || !lastName || !email || !password || !role || !contactNumber) {
     return res.status(400).json({ error: 'All primary fields are required.' });
   }
+  // Mobile signup may only create citizens or rescuers — never officials/admins.
+  if (role !== 'citizen' && role !== 'rescuer') {
+    return res.status(400).json({ error: 'Invalid account type.' });
+  }
   try {
     const existing = await findUserByEmail(email.trim());
     if (existing) return res.status(400).json({ error: 'An account with this email already exists. Try logging in.' });
@@ -443,7 +455,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
 // POST /api/auth/register  — Web dashboard + mobile alias
 app.post('/api/auth/register', async (req, res) => {
-  const { firstName, lastName, email, password, phoneNumber, contactNumber, role } = req.body;
+  const { firstName, lastName, email, password, phoneNumber, contactNumber } = req.body;
   if (!firstName || !lastName || !email || !password) {
     return res.status(400).json({ message: 'All fields are required.', error: 'All fields are required.' });
   }
@@ -469,7 +481,9 @@ app.post('/api/auth/register', async (req, res) => {
       });
     } else {
       const userId = String(Date.now());
-      const userRole = role || 'barangay_official';
+      // Role is never taken from the request: this endpoint only creates web-dashboard
+      // accounts, and public self-signup must not be able to pick or escalate a role.
+      const userRole = 'barangay_official';
       // Hash with bcrypt for web dashboard logins; keep sha256 for mobile compat
       const bcryptHash = await bcrypt.hash(password, 10);
       await new Promise((resolve, reject) => {
@@ -496,12 +510,10 @@ app.post('/api/auth/register', async (req, res) => {
       verificationEmailHtml(username, code),
       code
     );
-    return res.json({
-      success: true,
-      message: emailSent ? 'Verification code sent to your email.' : `Account created! Code: ${code}`,
-      email: cleanEmail,
-      code: !emailSent ? code : undefined,
-    });
+    if (!emailSent) {
+      return res.status(503).json({ error: 'Account created, but we could not send the verification email. Use "Resend code" to try again.' });
+    }
+    return res.json({ success: true, message: 'Verification code sent to your email.', email: cleanEmail });
   } catch (err) {
     console.error('Register error:', err);
     return res.status(500).json({ error: 'Could not create your account. Please try again.' });
@@ -565,7 +577,8 @@ app.post('/api/auth/resend-code', async (req, res) => {
       const subject = isMfa ? 'Your ZamboAlert Login 2FA Code' : 'Verify your ZamboAlert Account';
       const html = isMfa ? twoFaEmailHtml(username, code) : verificationEmailHtml(username, code, isMfa ? 5 : 10);
       const emailSent = await sendMail(user.email, subject, `Your code is: ${code}.`, html, code);
-      return res.json({ success: true, message: emailSent ? 'Code sent.' : `Code: ${code}`, code: !emailSent ? code : undefined });
+      if (!emailSent) return res.status(503).json({ error: 'Could not send the email. Please try again shortly.' });
+      return res.json({ success: true, message: 'Code sent.' });
     });
   });
 });
@@ -638,13 +651,13 @@ app.post('/api/auth/login', async (req, res) => {
           twoFaEmailHtml(username, code),
           code
         );
+        if (!emailSent) {
+          return res.status(503).json({ error: 'Could not send the 2FA email. Please try again shortly.', message: 'Could not send the 2FA email. Please try again shortly.' });
+        }
         return res.json({
-          message: emailSent
-            ? 'Credentials accepted. 2FA verification code sent to your email.'
-            : `Credentials accepted! (Email timed out: code is ${code})`,
+          message: 'Credentials accepted. 2FA verification code sent to your email.',
           username: `${user.first_name} ${user.last_name}`.trim(),
           email: user.email,
-          code: !emailSent ? code : undefined,
           requires2fa: true,
         });
       }
@@ -713,12 +726,8 @@ const handleForgotPassword = async (req, res) => {
     const emailSent = await sendMail(user.email, 'Reset your ZamboAlert Password',
       `Your password reset code is: ${code}. Expires in 15 minutes.`, html, code);
 
-    return res.json({
-      success: true,
-      message: emailSent ? 'Password reset code sent to your email.' : `Reset requested! Code: ${code}`,
-      email: user.email,
-      code: !emailSent ? code : undefined,
-    });
+    if (!emailSent) return res.status(503).json({ error: 'Could not send the reset email. Please try again shortly.', message: 'Could not send the reset email. Please try again shortly.' });
+    return res.json({ success: true, message: 'Password reset code sent to your email.', email: user.email });
   });
 };
 app.post('/api/auth/forgot-password', handleForgotPassword);
@@ -947,7 +956,7 @@ app.post('/api/admin/rescuers/:id/approve', requireAdminKey, (req, res) => {
   });
 });
 
-app.post('/api/admin/rescuers/approve-by-email', (req, res) => {
+app.post('/api/admin/rescuers/approve-by-email', requireAdminKey, (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email is required.' });
   db.run("UPDATE users SET is_rescuer_verified=1 WHERE LOWER(email)=? AND role='rescuer'",

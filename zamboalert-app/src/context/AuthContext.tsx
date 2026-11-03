@@ -177,7 +177,8 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const LOCKOUT_DURATION_MS = 30_000;
 const MAX_FAILED_ATTEMPTS = 3;
 
-let SESSION_USERS: UserRecord[] = [
+// Demo accounts exist only in dev builds; release builds start with no offline users.
+let SESSION_USERS: UserRecord[] = !__DEV__ ? [] : [
   {
     id: '1', firstName: 'Test', lastName: 'Citizen', email: 'citizen@test.com',
     passwordHash: sha256('test1234'), role: 'citizen',
