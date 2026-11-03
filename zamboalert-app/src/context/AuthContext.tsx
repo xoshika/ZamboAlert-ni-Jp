@@ -330,7 +330,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
       setDevCode(null);
 
-      if (data.isRescuerVerified === false) {
+      // Backend returns 0/1 (or null for citizens), not a boolean.
+      if (data.isRescuerVerified === false || data.isRescuerVerified === 0) {
         setError('Email verified. Your account is pending admin verification before you can log in.');
         setAuthStep('login');
         setPendingEmail('');

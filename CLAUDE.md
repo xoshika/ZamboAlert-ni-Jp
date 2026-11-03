@@ -14,7 +14,7 @@ zamboalert-app/   React Native mobile app (Expo, citizens + rescuers)
 zamboalert-web/   React + Vite web dashboard (barangay officials)
 firmware/         ESP32 PlatformIO projects
   zamboalert-gateway/   LoRa gateway (reports to backend)
-  zamboalert-pod/       Rescuer wearable pod (BLE scan + GPS)
+  zamboalert-pod/       Deployable signal pod (BLE scan + GPS); works placed stationary or carried/moved
 ```
 
 ## Commands

@@ -295,12 +295,11 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
         return;
       }
 
-      // ── Step 2: Also register to the web dashboard backend (port 5000) ───
-      // This makes the rescuer appear in the Barangay Admin Web at localhost:5173
+      // ── Step 2: Also register in the rescuers table ──────────────────────
+      // This makes the rescuer appear in the Barangay Admin Web approval panel.
       const reg = route.params?.registrationData;
       try {
-        // webDashboardUrl synced to API_BASE_URL
-        await fetch(`${API_BASE_URL}/api/rescuers/register`, {
+        const regResponse = await fetch(`${API_BASE_URL}/api/rescuers/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -312,9 +311,13 @@ export default function RescuerVerificationScreen({ navigation, route }: any) {
             id_number: idNumber.trim(),
           }),
         });
+        // 400 "already registered" on a retry is expected; anything else is worth logging.
+        if (!regResponse.ok && regResponse.status !== 400) {
+          console.warn(`Rescuer registration sync failed (HTTP ${regResponse.status}).`);
+        }
       } catch {
-        // Silent fail — web dashboard might not be running, primary backend already saved the data
-        console.warn('Web dashboard sync skipped (port 5000 not reachable).');
+        // Non-fatal: users table already saved the data
+        console.warn('Rescuer registration sync skipped (backend not reachable).');
       }
 
       // ── Step 3: Show the waiting for approval modal ───────────────────────

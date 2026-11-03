@@ -825,8 +825,13 @@ app.post('/api/rescuers/register', (req, res) => {
           if (insertErr.message.includes('UNIQUE')) return res.status(400).json({ message: 'Email is already registered.' });
           return res.status(500).json({ message: 'Failed to register rescuer', error: insertErr.message });
         }
+        if (defaultVerified === 1) {
+          // Keep the mobile auth table in sync so auto-approved rescuers can log in.
+          db.run("UPDATE users SET is_rescuer_verified=1 WHERE LOWER(email)=? AND role='rescuer'",
+            [email.trim().toLowerCase()]);
+        }
         res.status(201).json({
-          message: defaultVerified === 1 ? 'Rescuer registered and auto-approved.' : 'Rescuer registered. Pending admin approval.',
+          message: defaultVerified === 1 ?'Rescuer registered and auto-approved.' : 'Rescuer registered. Pending admin approval.',
           rescuerId: this.lastID,
           isVerified: defaultVerified === 1,
         });
