@@ -405,7 +405,12 @@ export function TacticalMap({
       setup3DLayers(map);
     });
 
+    // Keep the canvas aligned when the container resizes (e.g. sidebar collapse/expand)
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(mapContainerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
