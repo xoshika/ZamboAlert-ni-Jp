@@ -22,7 +22,7 @@ Backend needs `backend/.env` (copy `.env.example`; set `GATEWAY_API_KEY`, `JWT_S
 
 1. **Rescuer dual-table sync.** Rescuers live in `users` (mobile auth) and `rescuers` (web admin). Any approval path must update both `users.is_rescuer_verified` and `rescuers.is_verified`. Reference implementations: `POST /api/rescuers/verify/:id` and `POST /api/admin/rescuers/:id/approve`. Touching one without the other is the known bug class.
 2. **Dual password hashes.** Every user stores SHA-256 (mobile) and bcrypt (web). Signup, password change and reset must write both.
-3. **Auth differs by client.** Mobile: session token returned on login. Web (`barangay_official`): bcrypt, then 2FA email code, then JWT stored in `localStorage` as `zamboalert_auth` (has `expiry`; `PrivateRoute` enforces).
+3. **Auth differs by client.** Mobile: session token returned on login. Web (`barangay_official`): bcrypt, then 2FA email code, then JWT stored in `localStorage` as `zamboalert_auth` (has `expiry`; `PrivateRoute` enforces). Dashboard routes are guarded server-side by `requireOfficial` (Bearer JWT, official/admin roles); new dashboard routes must use it, and the web must call them via `apiFetch`/`downloadFile` so the token is sent.
 4. **Live data is in-memory.** `podTelemetry[]` (90s TTL) and `citizenSos[]` (10 min TTL) reset on restart. Don't persist-assume them.
 5. **Route order.** Declare `/api/incidents/export` and `/api/manpower/export` before any `/:id` route with the same prefix.
 6. **Gateway auth.** `POST /api/telemetry` requires `X-Gateway-Key` matching `GATEWAY_API_KEY`; the key is shared with gateway firmware.

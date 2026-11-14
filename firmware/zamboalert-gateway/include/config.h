@@ -36,9 +36,9 @@
 #include "secrets.h"
 
 // ---------- HTTP target (only used if FORWARD_VIA_HTTP is 1) ----------
-#define SERVER_URL "http://192.168.1.17:3000/api/telemetry"
+#define SERVER_URL "http://192.168.254.117:3000/api/telemetry"
 
 // ---------- MQTT target (only used if FORWARD_VIA_MQTT is 1) ----------
-#define MQTT_BROKER_HOST "192.168.1.17"
+#define MQTT_BROKER_HOST "192.168.254.117"
 #define MQTT_BROKER_PORT 1883
 #define MQTT_TOPIC "zamboalert/telemetry"

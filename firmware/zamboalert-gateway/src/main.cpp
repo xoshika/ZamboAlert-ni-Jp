@@ -91,9 +91,31 @@
 #define WIFI_RECONNECT_INTERVAL_MS 10000
 #endif
 
+// ---------- HTTP forward timing ----------
+// Short timeouts so a slow/down backend can't stall the loop for long,
+// and a backoff window after a connection-level failure so we don't
+// spend ~1.5 s per packet retrying a dead server.
+#ifndef HTTP_CONNECT_TIMEOUT_MS
+#define HTTP_CONNECT_TIMEOUT_MS 1500
+#endif
+#ifndef HTTP_TIMEOUT_MS
+#define HTTP_TIMEOUT_MS 2000
+#endif
+#ifndef HTTP_BACKOFF_MS
+#define HTTP_BACKOFF_MS 10000
+#endif
+
 String gatewayId;
 unsigned long rxCount = 0;
 unsigned long lastWifiAttempt = 0;
+
+// Duplicate filter: the same pod packet can arrive several times via
+// different relay pods. Only the first copy is printed/forwarded.
+SeenFilter seenFilter;
+
+// HTTP backoff state (set after a failure with code <= 0).
+bool httpBackoffActive = false;
+unsigned long httpBackoffStart = 0;
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -214,6 +236,15 @@ void processPacket(const uint8_t* data, int len, int rssi, float snr) {
         Serial.println(" - check sync word or RF saturation (move devices further apart)");
         return;
     }
+
+    if (seenFilter.seenBefore(pkt.nodeId, pkt.seq)) {
+        Serial.print("[LoRa RX] duplicate node=");
+        Serial.printf("%08X", pkt.nodeId);
+        Serial.print(" seq="); Serial.print(pkt.seq);
+        Serial.print(" hopsLeft="); Serial.print(pkt.hopCount);
+        Serial.println(" (ignored)");
+        return;
+    }
     rxCount++;
 
     // ---- Always: print to Serial (this IS the UART forward to the
@@ -243,9 +274,17 @@ void processPacket(const uint8_t* data, int len, int rssi, float snr) {
     Serial.println(json);
 
 #if FORWARD_VIA_HTTP
-    if (WiFi.status() == WL_CONNECTED) {
+    if (httpBackoffActive && millis() - httpBackoffStart >= HTTP_BACKOFF_MS) {
+        httpBackoffActive = false;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("HTTP forward: skipped (WiFi not connected)");
+    } else if (httpBackoffActive) {
+        Serial.println("HTTP forward: skipped (backoff)");
+    } else {
         HTTPClient http;
-        http.setTimeout(4000);
+        http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
+        http.setTimeout(HTTP_TIMEOUT_MS);
         http.begin(SERVER_URL);
         http.addHeader("Content-Type", "application/json");
         http.addHeader("X-Gateway-Key", GATEWAY_API_KEY);
@@ -253,8 +292,15 @@ void processPacket(const uint8_t* data, int len, int rssi, float snr) {
         http.end();
         Serial.print("HTTP forward: ");
         Serial.println((code > 0 && code < 300) ? "OK" : ("FAILED code=" + String(code)));
-    } else {
-        Serial.println("HTTP forward: skipped (WiFi not connected)");
+        if (code <= 0) {
+            // Connection-level failure (server down/unreachable/timeout):
+            // pause HTTP for a while so the gateway stays responsive.
+            httpBackoffActive = true;
+            httpBackoffStart = millis();
+            Serial.print("HTTP forward: backing off for ");
+            Serial.print(HTTP_BACKOFF_MS / 1000);
+            Serial.println(" s");
+        }
     }
 #endif
 
@@ -280,8 +326,11 @@ void handleLoraRx() {
         while (LoRa.available()) LoRa.read();
         int rssi = LoRa.packetRssi();
         float snr = LoRa.packetSnr();
-        processPacket(data, len, rssi, snr);
+        // Bytes/RSSI/SNR are copied out, so re-arm the radio BEFORE the
+        // slow part (Serial print + HTTP POST) - otherwise the gateway is
+        // deaf to other pods for as long as the backend takes to answer.
         LoRa.receive(); // re-enable continuous reception
+        processPacket(data, len, rssi, snr);
     }
 }
 
@@ -289,7 +338,7 @@ void setup() {
     Serial.begin(115200);
     delay(1000);
 
-    gatewayId = "GW-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    gatewayId = "GW-" + String((uint32_t)(ESP.getEfuseMac() >> 16), HEX);
 
     Serial.println();
     Serial.println("========================================");
@@ -300,11 +349,17 @@ void setup() {
     Serial.print(", "); Serial.println(GATEWAY_LNG, 6);
     Serial.println();
 
+    seenFilter.init();
+
     if (!setupLora()) {
         Serial.println("LoRa init FAILED - check SX1278 wiring/power. Halting.");
         while (true) delay(1000);
     }
-    Serial.println("LoRa mesh radio listening @ 433MHz.");
+    Serial.print("LoRa mesh radio listening @ ");
+    Serial.print(LORA_FREQ_HZ / 1E6, 1);
+    Serial.print("MHz, SF"); Serial.print(LORA_SF);
+    Serial.print(", sync 0x"); Serial.print(LORA_SYNC_WORD, HEX);
+    Serial.println(".");
 
 #if FORWARD_VIA_HTTP || FORWARD_VIA_MQTT
     connectWifi();
@@ -322,7 +377,9 @@ void setup() {
 
     Serial.println();
     Serial.println("Wiring (no GPS on this node - fixed location above):");
-    Serial.println("SX1278 -> 3V3/GND, SCK18 MISO19 MOSI23 NSS5 RST14 DIO0 26");
+    Serial.printf("SX1278 -> 3V3/GND, SCK%d MISO%d MOSI%d NSS%d RST%d DIO0 %d\n",
+                  LORA_SCK_PIN, LORA_MISO_PIN, LORA_MOSI_PIN,
+                  LORA_NSS_PIN, LORA_RST_PIN, LORA_DIO0_PIN);
     Serial.println("Interactive testing: Type 't' in Serial for test Telemetry, 's' for test SOS.");
 }
 
@@ -336,6 +393,9 @@ void loop() {
     handleLoraRx();
 
     // Check for interactive Serial test commands
+    // Test packets share one fake nodeId, so each injection gets a fresh
+    // seq - otherwise the duplicate filter would drop repeated 't'/'s'.
+    static uint32_t testSeq = 900;
     if (Serial.available()) {
         char ch = Serial.read();
         if (ch == 't' || ch == 'T') {
@@ -344,7 +404,7 @@ void loop() {
             testPkt.magic = ZA_MAGIC;
             testPkt.msgType = ZA_MSG_TELEMETRY;
             testPkt.nodeId = 0xAA11BB22;
-            testPkt.seq = 901;
+            testPkt.seq = ++testSeq;
             testPkt.lat_e6 = (int32_t)(GATEWAY_LAT * 1e6);
             testPkt.lng_e6 = (int32_t)(GATEWAY_LNG * 1e6);
             testPkt.sats = 6;
@@ -362,7 +422,7 @@ void loop() {
             testPkt.magic = ZA_MAGIC;
             testPkt.msgType = ZA_MSG_SOS;
             testPkt.nodeId = 0xAA11BB22;
-            testPkt.seq = 902;
+            testPkt.seq = ++testSeq;
             testPkt.lat_e6 = (int32_t)(GATEWAY_LAT * 1e6);
             testPkt.lng_e6 = (int32_t)(GATEWAY_LNG * 1e6);
             testPkt.sats = 6;
@@ -382,7 +442,9 @@ void loop() {
     unsigned long now = millis();
     if (now - lastHeartbeat >= 20000) {
         lastHeartbeat = now;
-        Serial.print("[Gateway Status] Radio listening @ 433MHz | Packets received: ");
+        Serial.print("[Gateway Status] Radio listening @ ");
+        Serial.print(LORA_FREQ_HZ / 1E6, 1);
+        Serial.print("MHz | Packets received: ");
         Serial.print(rxCount);
 #if FORWARD_VIA_HTTP
         Serial.print(" | WiFi: ");

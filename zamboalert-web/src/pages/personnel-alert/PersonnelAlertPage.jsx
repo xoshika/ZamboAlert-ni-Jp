@@ -11,7 +11,7 @@ import {
   EscalateAgencyModal,
   EditBarangayModal,
 } from "./AlertModals";
-import { API } from "./personnelAlertUtils";
+import { apiFetch, downloadFile } from "../dashboard/dashboardApi";
 
 export default function PersonnelAlertPage() {
   const [subTab, setSubTab] = useState("alerts");
@@ -42,7 +42,7 @@ export default function PersonnelAlertPage() {
   const fetchAlerts = useCallback(async () => {
     setLoadingAlerts(true);
     try {
-      const res = await fetch(`${API}/api/manpower/alerts`);
+      const res = await apiFetch(`/api/manpower/alerts`);
       if (res.ok) setAlerts(await res.json());
     } catch (e) {
       console.error(e);
@@ -54,7 +54,7 @@ export default function PersonnelAlertPage() {
   const fetchBarangays = useCallback(async () => {
     setLoadingBarangays(true);
     try {
-      const res = await fetch(`${API}/api/manpower/barangays`);
+      const res = await apiFetch(`/api/manpower/barangays`);
       if (res.ok) setBarangays(await res.json());
     } catch (e) {
       console.error(e);
@@ -66,7 +66,7 @@ export default function PersonnelAlertPage() {
   const fetchTransfers = useCallback(async () => {
     setLoadingTransfers(true);
     try {
-      const res = await fetch(`${API}/api/manpower/transfers`);
+      const res = await apiFetch(`/api/manpower/transfers`);
       if (res.ok) setTransfers(await res.json());
     } catch (e) {
       console.error(e);
@@ -78,7 +78,7 @@ export default function PersonnelAlertPage() {
   const fetchEscalations = useCallback(async () => {
     setLoadingEscalations(true);
     try {
-      const res = await fetch(`${API}/api/manpower/escalations`);
+      const res = await apiFetch(`/api/manpower/escalations`);
       if (res.ok) setEscalations(await res.json());
     } catch (e) {
       console.error(e);
@@ -126,7 +126,7 @@ export default function PersonnelAlertPage() {
           setEscalateDefaultTargets([]);
           setShowEscalate(true);
         }}
-        onExport={() => window.open(`${API}/api/manpower/export`, "_blank")}
+        onExport={() => downloadFile("/api/manpower/export", "manpower-alerts.csv").catch((e) => console.error(e))}
       />
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-6">

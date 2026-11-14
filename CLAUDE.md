@@ -57,6 +57,8 @@ Auth strategy differs by role:
 
 Both hashes are stored for every user so either client can authenticate.
 
+Web dashboard routes (`/api/rescuers/*` except `POST /register`, `/api/settings`, `/api/logs/casualties*`, `/api/households*`, `/api/incidents*`, `/api/manpower/*`) require `Authorization: Bearer <JWT>` via the `requireOfficial` middleware (roles `barangay_official`/`admin`). The web sends it through `apiFetch`/`downloadFile` in `zamboalert-web/src/pages/dashboard/dashboardApi.js`; a 401 clears the session and returns to `/login`.
+
 Key API surface:
 - `POST /api/telemetry` — LoRa gateway reports (requires `X-Gateway-Key` header)
 - `POST /api/sos` — citizen phone GPS SOS (mirrors as virtual telemetry pod)

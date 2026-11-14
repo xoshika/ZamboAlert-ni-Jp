@@ -15,7 +15,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { API } from "./personnelAlertUtils";
+import { apiFetch } from "../dashboard/dashboardApi";
 
 export function TriggerAlertModal({ barangay, onClose, onTriggered }) {
   const [customMessage, setCustomMessage] = useState("");
@@ -29,7 +29,7 @@ export function TriggerAlertModal({ barangay, onClose, onTriggered }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/manpower/trigger-alert`, {
+      const res = await apiFetch(`/api/manpower/trigger-alert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ barangay_name: barangay, custom_message: customMessage || defaultMsg, priority: "CRITICAL_DEFICIT" }),
@@ -135,7 +135,7 @@ export function MutualAidModal({ barangays, defaultTo = "", onClose, onTransferr
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/manpower/mutual-aid-transfer`, {
+      const res = await apiFetch(`/api/manpower/mutual-aid-transfer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -298,7 +298,7 @@ export function EscalateAgencyModal({ barangays, defaultTargets = [], onClose, o
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/manpower/escalate-agency`, {
+      const res = await apiFetch(`/api/manpower/escalate-agency`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -456,7 +456,7 @@ export function EditBarangayModal({ barangay, onClose, onSaved }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API}/api/manpower/barangays/${barangay.id}`, {
+      const res = await apiFetch(`/api/manpower/barangays/${barangay.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

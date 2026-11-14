@@ -45,6 +45,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-Gateway-Key, X-Admin-Key');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Expose-Headers', 'Content-Disposition'); // CSV export filenames
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -231,6 +232,29 @@ function requireAdminKey(req, res, next) {
   next();
 }
 
+// ── Middleware: Web dashboard session guard ───────────────────────────────────
+// Requires the JWT issued by POST /api/auth/verify-2fa, sent as
+// "Authorization: Bearer <token>". Only dashboard roles may pass.
+const DASHBOARD_ROLES = new Set(['barangay_official', 'admin']);
+function requireOfficial(req, res, next) {
+  const match = /^Bearer\s+(\S+)$/i.exec(req.get('Authorization') || '');
+  if (!match) {
+    return res.status(401).json({ error: 'Sign in required.', message: 'Sign in required.' });
+  }
+  let payload;
+  try {
+    payload = jwt.verify(match[1], JWT_SECRET);
+  } catch (e) {
+    const message = e.name === 'TokenExpiredError' ? 'Session expired. Please sign in again.' : 'Invalid session. Please sign in again.';
+    return res.status(401).json({ error: message, message });
+  }
+  if (!DASHBOARD_ROLES.has(payload.role)) {
+    return res.status(403).json({ error: 'This account cannot use the dashboard.', message: 'This account cannot use the dashboard.' });
+  }
+  req.official = payload;
+  next();
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
@@ -268,7 +292,7 @@ app.post('/api/telemetry', (req, res) => {
     Number.isInteger(body.victimStatus) && body.victimStatus >= 0 && body.victimStatus <= 255 &&
     Number.isInteger(body.hopCount) && body.hopCount >= 0 && body.hopCount <= 255 &&
     Number.isInteger(body.uptime) && body.uptime >= 0 && body.uptime <= 4294967295 &&
-    Number.isInteger(body.loraRssi) && body.loraRssi >= -127 && body.loraRssi <= 0 &&
+    Number.isInteger(body.loraRssi) && body.loraRssi >= -164 && body.loraRssi <= 10 &&
     validNumber(body.loraSnr, -50, 50);
 
   if (!valid) return res.status(400).json({ message: 'Invalid telemetry packet.' });
@@ -777,7 +801,7 @@ app.post('/api/auth/rescuer-verify', (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/rescuers — includes ID photos from matching users row (by email)
-app.get('/api/rescuers', (req, res) => {
+app.get('/api/rescuers', requireOfficial, (req, res) => {
   db.all(
     `SELECT r.*, u.id_front_uri AS id_front_uri, u.id_back_uri AS id_back_uri
      FROM rescuers r
@@ -792,7 +816,7 @@ app.get('/api/rescuers', (req, res) => {
 });
 
 // GET /api/rescuers/:id — single rescuer with ID document photos for admin review
-app.get('/api/rescuers/:id', (req, res) => {
+app.get('/api/rescuers/:id', requireOfficial, (req, res) => {
   db.get(
     `SELECT r.*, u.id_front_uri AS id_front_uri, u.id_back_uri AS id_back_uri
      FROM rescuers r
@@ -841,7 +865,7 @@ app.post('/api/rescuers/register', (req, res) => {
 });
 
 // POST /api/rescuers/verify/:id
-app.post('/api/rescuers/verify/:id', (req, res) => {
+app.post('/api/rescuers/verify/:id', requireOfficial, (req, res) => {
   const { id } = req.params;
   db.run("UPDATE rescuers SET is_verified=1, status='available' WHERE id=?", [id], function (err) {
     if (err) return res.status(500).json({ message: 'Failed to verify rescuer', error: err.message });
@@ -859,7 +883,7 @@ app.post('/api/rescuers/verify/:id', (req, res) => {
 });
 
 // DELETE /api/rescuers/:id
-app.delete('/api/rescuers/:id', (req, res) => {
+app.delete('/api/rescuers/:id', requireOfficial, (req, res) => {
   db.get('SELECT email FROM rescuers WHERE id=?', [req.params.id], (findErr, row) => {
     if (findErr) return res.status(500).json({ message: 'Failed to delete rescuer', error: findErr.message });
     if (!row) return res.status(404).json({ message: 'Rescuer not found.' });
@@ -878,7 +902,7 @@ app.delete('/api/rescuers/:id', (req, res) => {
 });
 
 // POST /api/rescuers/dispatch
-app.post('/api/rescuers/dispatch', (req, res) => {
+app.post('/api/rescuers/dispatch', requireOfficial, (req, res) => {
   const { rescuerId, targetType, targetId, targetName } = req.body;
   if (!rescuerId || !targetType) return res.status(400).json({ message: 'Rescuer ID and Target Type are required.' });
   db.run(
@@ -892,7 +916,7 @@ app.post('/api/rescuers/dispatch', (req, res) => {
 });
 
 // POST /api/rescuers/resolve/:id
-app.post('/api/rescuers/resolve/:id', (req, res) => {
+app.post('/api/rescuers/resolve/:id', requireOfficial, (req, res) => {
   const { id } = req.params;
   db.run(
     "UPDATE rescuers SET status='available', assigned_target_type=NULL, assigned_target_id=NULL, assigned_target_name=NULL WHERE id=? OR id_number=?",
@@ -905,7 +929,7 @@ app.post('/api/rescuers/resolve/:id', (req, res) => {
 });
 
 // POST /api/rescuers/location
-app.post('/api/rescuers/location', (req, res) => {
+app.post('/api/rescuers/location', requireOfficial, (req, res) => {
   const { rescuerId, latitude, longitude, status } = req.body;
   if (!rescuerId || latitude === undefined || longitude === undefined) {
     return res.status(400).json({ message: 'Rescuer ID, latitude, and longitude are required.' });
@@ -922,7 +946,7 @@ app.post('/api/rescuers/location', (req, res) => {
 });
 
 // POST /api/rescuers/assign-zone
-app.post('/api/rescuers/assign-zone', (req, res) => {
+app.post('/api/rescuers/assign-zone', requireOfficial, (req, res) => {
   const { rescuerId, zone, role } = req.body;
   if (!rescuerId || !zone) return res.status(400).json({ message: 'Rescuer ID and Zone are required.' });
   let sql = 'UPDATE rescuers SET assigned_zone=?';
@@ -1000,7 +1024,7 @@ app.get('/api/admin/stats', requireAdminKey, (req, res) => {
 // SECTION 5: Settings
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', requireOfficial, (req, res) => {
   db.all('SELECT * FROM settings', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Failed to fetch settings', error: err.message });
     const out = {};
@@ -1013,7 +1037,7 @@ app.get('/api/settings', (req, res) => {
   });
 });
 
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', requireOfficial, (req, res) => {
   const { key, value } = req.body;
   if (!key) return res.status(400).json({ message: 'Setting key is required.' });
   const valStr = typeof value === 'boolean' ? (value ? '1' : '0') : String(value);
@@ -1027,14 +1051,14 @@ app.post('/api/settings', (req, res) => {
 // SECTION 6: Casualty / Victim Logs
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/logs/casualties', (req, res) => {
+app.get('/api/logs/casualties', requireOfficial, (req, res) => {
   db.all('SELECT * FROM casualty_logs ORDER BY created_at DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     res.json(rows);
   });
 });
 
-app.post('/api/logs/casualties', (req, res) => {
+app.post('/api/logs/casualties', requireOfficial, (req, res) => {
   const { rescuer_id, rescuer_name, victim_name, age, gender, status, injury_details, location, latitude, longitude, disaster_type } = req.body;
   if (!victim_name || !status) return res.status(400).json({ message: 'Victim name and status are required.' });
   db.run(
@@ -1049,7 +1073,7 @@ app.post('/api/logs/casualties', (req, res) => {
   );
 });
 
-app.post('/api/logs/casualties/clear', (req, res) => {
+app.post('/api/logs/casualties/clear', requireOfficial, (req, res) => {
   db.run('DELETE FROM casualty_logs', [], err => {
     if (err) return res.status(500).json({ message: 'Failed to clear casualty logs', error: err.message });
     res.json({ message: 'All casualty logs cleared.' });
@@ -1060,7 +1084,7 @@ app.post('/api/logs/casualties/clear', (req, res) => {
 // SECTION 7: Households / Resident Registry
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/households', (req, res) => {
+app.get('/api/households', requireOfficial, (req, res) => {
   const { purok } = req.query;
   let sql = 'SELECT * FROM households';
   const params = [];
@@ -1072,7 +1096,7 @@ app.get('/api/households', (req, res) => {
   });
 });
 
-app.post('/api/households', (req, res) => {
+app.post('/api/households', requireOfficial, (req, res) => {
   const { resident_name, household_head, phone_number, purok_zone, occupants_count, vulnerable_count, status, latitude, longitude } = req.body;
   if (!resident_name || !phone_number || !purok_zone) {
     return res.status(400).json({ message: 'Resident Name, Phone Number, and Purok/Zone are required.' });
@@ -1090,7 +1114,7 @@ app.post('/api/households', (req, res) => {
   );
 });
 
-app.put('/api/households/:id', (req, res) => {
+app.put('/api/households/:id', requireOfficial, (req, res) => {
   const { id } = req.params;
   const { resident_name, household_head, phone_number, purok_zone, occupants_count, vulnerable_count, status, latitude, longitude } = req.body;
   db.run(
@@ -1106,14 +1130,14 @@ app.put('/api/households/:id', (req, res) => {
   );
 });
 
-app.delete('/api/households/:id', (req, res) => {
+app.delete('/api/households/:id', requireOfficial, (req, res) => {
   db.run('DELETE FROM households WHERE id=?', [req.params.id], err => {
     if (err) return res.status(500).json({ message: 'Failed to delete household', error: err.message });
     res.json({ message: 'Household record deleted.' });
   });
 });
 
-app.post('/api/households/broadcast', (req, res) => {
+app.post('/api/households/broadcast', requireOfficial, (req, res) => {
   const { purok_zone, message, priority } = req.body;
   if (!message) return res.status(400).json({ message: 'Broadcast message is required.' });
   let sql = "SELECT phone_number, resident_name FROM households WHERE status='Active'";
@@ -1134,7 +1158,7 @@ app.post('/api/households/broadcast', (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // NOTE: /api/incidents/export must be declared BEFORE /api/incidents/:id
-app.get('/api/incidents/export', (req, res) => {
+app.get('/api/incidents/export', requireOfficial, (req, res) => {
   db.all('SELECT * FROM incidents ORDER BY date_occurred DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     const headers = ["ID","Title","Disaster Type","Date Occurred","Peak Water Level (m)","Affected Households",
@@ -1156,14 +1180,14 @@ app.get('/api/incidents/export', (req, res) => {
   });
 });
 
-app.get('/api/incidents', (req, res) => {
+app.get('/api/incidents', requireOfficial, (req, res) => {
   db.all('SELECT * FROM incidents ORDER BY date_occurred DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     res.json(rows);
   });
 });
 
-app.post('/api/incidents', (req, res) => {
+app.post('/api/incidents', requireOfficial, (req, res) => {
   const { title, disaster_type, date_occurred, water_level_m, affected_households, total_rescued,
     casualties_count, avg_response_time_mins, dispatch_time_mins, on_scene_time_mins,
     purok_zone, damage_estimate_php, status, summary_notes } = req.body;
@@ -1185,7 +1209,7 @@ app.post('/api/incidents', (req, res) => {
   );
 });
 
-app.delete('/api/incidents/:id', (req, res) => {
+app.delete('/api/incidents/:id', requireOfficial, (req, res) => {
   db.run('DELETE FROM incidents WHERE id=?', [req.params.id], err => {
     if (err) return res.status(500).json({ message: 'Failed to delete incident report', error: err.message });
     res.json({ message: 'Incident report deleted.' });
@@ -1196,14 +1220,14 @@ app.delete('/api/incidents/:id', (req, res) => {
 // SECTION 9: Manpower & Worst-Case Disaster Scenarios
 // ══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/manpower/barangays', (req, res) => {
+app.get('/api/manpower/barangays', requireOfficial, (req, res) => {
   db.all("SELECT * FROM barangays ORDER BY risk_level='Extreme' DESC, risk_level='High' DESC, name ASC", [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     res.json(rows);
   });
 });
 
-app.put('/api/manpower/barangays/:id', (req, res) => {
+app.put('/api/manpower/barangays/:id', requireOfficial, (req, res) => {
   const { active_sar, active_tanods, active_medics, active_logistics, active_boat_crews, rescue_boats, ambulances, contact_person, contact_number } = req.body;
   db.run(
     `UPDATE barangays SET active_sar=?, active_tanods=?, active_medics=?, active_logistics=?,
@@ -1217,14 +1241,14 @@ app.put('/api/manpower/barangays/:id', (req, res) => {
   );
 });
 
-app.get('/api/manpower/alerts', (req, res) => {
+app.get('/api/manpower/alerts', requireOfficial, (req, res) => {
   db.all('SELECT * FROM manpower_alerts ORDER BY deficit_percentage DESC, deficit_count DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     res.json(rows);
   });
 });
 
-app.post('/api/manpower/alerts', (req, res) => {
+app.post('/api/manpower/alerts', requireOfficial, (req, res) => {
   const {
     barangay_id, barangay_name, disaster_type='Flash Flood', scenario_level='Level 3 - Severe Disaster',
     projected_affected_pop=0, required_sar=0, required_tanods=0, required_medics=0, required_logistics=0,
@@ -1266,7 +1290,7 @@ app.post('/api/manpower/alerts', (req, res) => {
   );
 });
 
-app.post('/api/manpower/trigger-alert', (req, res) => {
+app.post('/api/manpower/trigger-alert', requireOfficial, (req, res) => {
   const { barangay_name, custom_message } = req.body;
   if (!barangay_name) return res.status(400).json({ message: 'Barangay Name is required.' });
   db.run(
@@ -1280,7 +1304,7 @@ app.post('/api/manpower/trigger-alert', (req, res) => {
   );
 });
 
-app.post('/api/manpower/mutual-aid-transfer', (req, res) => {
+app.post('/api/manpower/mutual-aid-transfer', requireOfficial, (req, res) => {
   const { from_barangay, to_barangay, disaster_type, sar_count=0, tanod_count=0, medic_count=0, logistics_count=0, notes } = req.body;
   if (!from_barangay || !to_barangay) return res.status(400).json({ message: 'Source and Destination Barangay are required.' });
   const total = parseInt(sar_count||0) + parseInt(tanod_count||0) + parseInt(medic_count||0) + parseInt(logistics_count||0);
@@ -1298,14 +1322,14 @@ app.post('/api/manpower/mutual-aid-transfer', (req, res) => {
   );
 });
 
-app.get('/api/manpower/transfers', (req, res) => {
+app.get('/api/manpower/transfers', requireOfficial, (req, res) => {
   db.all('SELECT * FROM manpower_transfers ORDER BY created_at DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     res.json(rows);
   });
 });
 
-app.post('/api/manpower/escalate-agency', (req, res) => {
+app.post('/api/manpower/escalate-agency', requireOfficial, (req, res) => {
   const { target_barangays, disaster_type, scenario_level, requested_agency, requested_units, total_reinforcements, priority='Critical Priority', notes } = req.body;
   if (!target_barangays || !requested_agency || !requested_units) {
     return res.status(400).json({ message: 'Target Barangays, Requested Agency, and Requested Units are required.' });
@@ -1324,7 +1348,7 @@ app.post('/api/manpower/escalate-agency', (req, res) => {
   );
 });
 
-app.get('/api/manpower/escalations', (req, res) => {
+app.get('/api/manpower/escalations', requireOfficial, (req, res) => {
   db.all('SELECT * FROM manpower_escalations ORDER BY created_at DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
     res.json(rows);
@@ -1332,7 +1356,7 @@ app.get('/api/manpower/escalations', (req, res) => {
 });
 
 // NOTE: /api/manpower/export must be declared BEFORE /api/manpower/:id if you had one
-app.get('/api/manpower/export', (req, res) => {
+app.get('/api/manpower/export', requireOfficial, (req, res) => {
   db.all(
     `SELECT a.*, b.population, b.district, b.risk_level, b.rescue_boats, b.ambulances, b.contact_person, b.contact_number
      FROM manpower_alerts a LEFT JOIN barangays b ON a.barangay_name = b.name
@@ -1370,4 +1394,26 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚨 ZamboAlert Unified Backend running on http://0.0.0.0:${PORT}`);
   console.log(`   LoRa telemetry, Citizen SOS, Mobile Auth, Web Admin API — all on :${PORT}`);
   console.log(`   SQLite DB: ${require('./database').db ? 'connected' : 'initializing...'}\n`);
+  startKeepAwake();
 });
+
+// ── Keep-awake (Render free tier) ─────────────────────────────────────────────
+// Free Render web services sleep after 15 min without inbound traffic, and a
+// restart wipes the in-memory podTelemetry / citizenSos stores. Pinging our own
+// public URL counts as inbound traffic. RENDER_EXTERNAL_URL is set by Render
+// automatically, so this never runs locally. Set KEEP_AWAKE=0 to disable.
+const KEEP_AWAKE_INTERVAL_MS = 10 * 60 * 1000; // 10 min (< 15 min idle limit)
+function startKeepAwake() {
+  const baseUrl = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  if (!baseUrl || process.env.KEEP_AWAKE === '0') return;
+  const ping = async () => {
+    try {
+      const resp = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(30000) });
+      if (!resp.ok) console.warn(`[Keep-awake] /health returned ${resp.status}`);
+    } catch (e) {
+      console.warn('[Keep-awake] Ping failed:', e.message);
+    }
+  };
+  setInterval(ping, KEEP_AWAKE_INTERVAL_MS).unref();
+  console.log(`   Keep-awake: pinging ${baseUrl}/health every ${KEEP_AWAKE_INTERVAL_MS / 60000} min`);
+}

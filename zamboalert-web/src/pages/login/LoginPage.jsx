@@ -204,19 +204,22 @@ export default function LoginPage() {
           return;
         }
 
-        // Direct dashboard login
-        const token = data.session?.token || data.token || `token-${Date.now()}`;
-        const expiry = data.session?.expiresAt || Date.now() + 24 * 60 * 60 * 1000;
-        localStorage.setItem(
-          "zamboalert_auth",
-          JSON.stringify({
-            token,
-            user: data.user,
-            expiry,
-          })
+        // Barangay officials: password accepted, backend emailed a 2FA code.
+        if (data.requires2fa) {
+          setEmail(data.email || cleanEmail);
+          setOtp("");
+          setResendTimer(60);
+          setView("mfa");
+          showNotificationMsg("A 6-digit code was sent to your email.", "success");
+          return;
+        }
+
+        // Only barangay officials (who go through 2FA above) get a dashboard
+        // session. Citizen and rescuer accounts sign in on the mobile app.
+        showNotificationMsg(
+          "This dashboard is for barangay officials. Citizens and rescuers, please use the ZamboAlert mobile app.",
+          "error"
         );
-        showNotificationMsg("Signed in successfully!", "success");
-        navigate("/dashboard");
       } else if (response.status === 403 && data.unverified) {
         setEmail(data.email || cleanEmail);
         setView("verify");

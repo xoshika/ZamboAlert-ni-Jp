@@ -1,11 +1,3 @@
-const configuredApiBaseUrl = (
-  import.meta.env.VITE_API_BASE_URL ||
-  import.meta.env.VITE_TELEMETRY_URL ||
-  ""
-).replace(/\/$/, "");
-
-export const API = configuredApiBaseUrl || `http://localhost:${import.meta.env.VITE_API_PORT || 5000}`;
-
 export function alertLevelStyle(level = "") {
   if (level.includes("CRITICAL")) {
     return { badge: "bg-red-600 text-white border-red-700", row: "border-l-4 border-red-500", icon: "text-red-600", glow: "bg-red-50" };

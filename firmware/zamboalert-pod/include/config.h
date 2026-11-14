@@ -16,7 +16,9 @@
 #define LORA_MOSI_PIN  23
 #define LORA_NSS_PIN   5
 #define LORA_RST_PIN   14
-#define LORA_DIO0_PIN  26
+// DIO0 on GPIO 4 (B-side pin) so the 38-pin ESP32 fits one breadboard:
+// its J-side pins have no free holes. Was GPIO 26.
+#define LORA_DIO0_PIN  4
 #define LORA_FREQ_HZ   433E6
 // Set to 2 dBm (minimum power, only ~18mA current) to guarantee zero brownout
 // while testing on USB power and breadboard. Still easily covers 50+ meters.
@@ -26,7 +28,9 @@
 #define LORA_SYNC_WORD 0x12
 
 // ---------- Buzzer / LED ----------
-#define BUZZER_PIN 25
+// Buzzer and LED on B-side pins (compact breadboard layout). Were 25 / 27.
+#define BUZZER_PIN 22
+#define LED_PIN    21
 
 // ---------- BLE SOS detection ----------
 // The Citizen app advertises this service UUID when an SOS is active.
@@ -43,6 +47,8 @@
 // If 1, assigns default coordinates when NEO-6M has no fix yet so the
 // web map can display the pod during indoor desk testing. When real GPS locks,
 // real satellite coordinates automatically take precedence.
-#define GPS_INDOOR_TEST_FALLBACK 1
+// MUST stay 0 for deployment: only real GPS fixes may be reported (with 1, a
+// pod without a lock is reported as gpsFix=1 at the fake FALLBACK_LAT/LNG).
+#define GPS_INDOOR_TEST_FALLBACK 0
 #define FALLBACK_LAT 6.912345
 #define FALLBACK_LNG 122.079876
