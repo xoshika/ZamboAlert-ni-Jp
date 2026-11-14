@@ -9,3 +9,7 @@ backend/src/*.db
 backend/src/*.db-wal
 backend/src/*.db-shm
 firmware/**/secrets.h
+
+# Local AI assistant files
+.claude/
+CLAUDE.md
