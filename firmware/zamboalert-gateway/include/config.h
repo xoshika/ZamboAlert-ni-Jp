@@ -32,11 +32,11 @@
 #define FORWARD_VIA_MQTT 0
 
 // ---------- Wi-Fi (barangay hall local network) ----------
-// WIFI_SSID / WIFI_PASSWORD / GATEWAY_API_KEY live in secrets.h (gitignored).
+// WIFI_SSID / WIFI_PASSWORD / GATEWAY_API_KEY / SERVER_URL live in secrets.h (gitignored).
 #include "secrets.h"
 
 // ---------- HTTP target (only used if FORWARD_VIA_HTTP is 1) ----------
-#define SERVER_URL "http://192.168.254.117:3000/api/telemetry"
+// SERVER_URL is set in secrets.h (per-machine LAN IP or Render URL).
 
 // ---------- MQTT target (only used if FORWARD_VIA_MQTT is 1) ----------
 #define MQTT_BROKER_HOST "192.168.254.117"

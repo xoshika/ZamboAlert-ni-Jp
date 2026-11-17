@@ -13,3 +13,4 @@ firmware/**/secrets.h
 # Local AI assistant files
 .claude/
 CLAUDE.md
+docs/conversations/

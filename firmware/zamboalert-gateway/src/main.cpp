@@ -73,7 +73,7 @@
 #define WIFI_PASSWORD "CHANGE_ME"
 #endif
 #ifndef SERVER_URL
-#define SERVER_URL "http://192.168.1.100:3000/api/telemetry"
+#error "SERVER_URL not set - add it to include/secrets.h (see secrets.h.example)"
 #endif
 #ifndef GATEWAY_API_KEY
 #define GATEWAY_API_KEY "CHANGE_ME"
