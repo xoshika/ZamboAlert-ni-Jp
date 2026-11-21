@@ -369,7 +369,7 @@ export default function DashboardContent({
               <div className="text-base font-bold text-slate-900 mt-1">{rescuer.name}</div>
               <div className="text-xs text-slate-500 font-mono mt-0.5">{rescuer.unit}</div>
               <div className="text-xs text-slate-600 mt-2"><strong>Assigned Zone:</strong> {rescuer.assignedZone}</div>
-              <div className="text-xs text-slate-600 font-mono mt-1">📍 {rescuer.lat}, {rescuer.lng}</div>
+              <div className="text-xs text-slate-600 font-mono mt-1">📍 {rescuer.lat && rescuer.lng ? `${rescuer.lat}, ${rescuer.lng}` : "No location yet"}</div>
             </div>
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-mono text-slate-500">
               <span>Ping: {rescuer.lastPing}</span>

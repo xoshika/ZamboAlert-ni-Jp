@@ -13,6 +13,9 @@ import {
 } from "lucide-react";
 import { TUMAGA_BUILDINGS, parseCoordinate, signalBars } from "./dashboardData";
 
+// Rescuer GPS older than this is drawn greyed out as possibly stale.
+const RESCUER_LOCATION_STALE_SEC = 120;
+
 export function SignalBars({ bars, active }) {
   return (
     <span className="inline-flex items-end gap-0.5 h-3">
@@ -568,11 +571,21 @@ export function TacticalMap({
       const lat = parseCoordinate(r.lat || r.latitude);
       const lng = parseCoordinate(r.lng || r.longitude);
       if (lat && lng) {
+        const updatedMs = r.locationUpdatedAt ? Date.parse(r.locationUpdatedAt) : NaN;
+        const ageSec = Number.isFinite(updatedMs) ? Math.max(0, Math.round((Date.now() - updatedMs) / 1000)) : null;
+        const isStale = ageSec !== null && ageSec > RESCUER_LOCATION_STALE_SEC;
+        const lastUpdateText =
+          ageSec === null ? "unknown" : ageSec < 60 ? `${ageSec}s ago` : `${Math.floor(ageSec / 60)} min ago`;
+
         const el = document.createElement("div");
         el.className = "relative flex flex-col items-center justify-center cursor-pointer";
+        // Mapbox writes opacity on the marker element itself, so dim the children instead.
+        const dimStyle = isStale ? ' style="opacity: 0.5;"' : "";
         el.innerHTML = `
-          <div class="relative flex items-center justify-center w-6 h-6 rounded-lg border-2 border-white text-[9px] font-bold font-mono shadow-md ${
-            r.status === "available"
+          <div${dimStyle} class="relative flex items-center justify-center w-6 h-6 rounded-lg border-2 border-white text-[9px] font-bold font-mono shadow-md ${
+            isStale
+              ? "bg-slate-500 text-white"
+              : r.status === "available"
               ? "bg-emerald-600 text-white"
               : r.status === "en-route"
               ? "bg-amber-500 text-white"
@@ -580,7 +593,7 @@ export function TacticalMap({
           }">
             R
           </div>
-          <span class="absolute top-7 bg-slate-900/90 text-slate-100 text-[8px] px-1.5 py-px rounded border border-slate-700 font-mono whitespace-nowrap shadow-xs">
+          <span${dimStyle} class="absolute top-7 bg-slate-900/90 text-slate-100 text-[8px] px-1.5 py-px rounded border border-slate-700 font-mono whitespace-nowrap shadow-xs">
             ${r.id}
           </span>
         `;
@@ -588,7 +601,8 @@ export function TacticalMap({
         const popup = new mapboxgl.Popup({ offset: [0, -14], closeButton: false }).setHTML(`
           <div style="font-family: sans-serif; font-size: 11px; padding: 2px;">
             <strong>${r.name}</strong><br/>
-            <span style="font-size: 9px; opacity: 0.8; text-transform: uppercase;">Status: ${r.status}</span>
+            <span style="font-size: 9px; opacity: 0.8; text-transform: uppercase;">Status: ${r.status}</span><br/>
+            <span style="font-size: 9px; opacity: 0.8;">Last update: ${lastUpdateText}</span>
           </div>
         `);
 

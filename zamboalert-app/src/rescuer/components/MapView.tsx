@@ -6,6 +6,8 @@ import { Navigation, ShieldAlert, ChevronRight, MapPin, X, Layers, LifeBuoy, Ale
 import { Mono, PulsingDot } from './SharedUI';
 import { situationColors } from '../assets/displayConfig';
 import { styles } from '../theme/styles';
+import type { PodTelemetry } from '../services/telemetry';
+import type { RescuerCoords } from '../services/rescuerLocation';
 
 const LEAFLET_HTML = `
 <!DOCTYPE html>
@@ -81,6 +83,25 @@ const LEAFLET_HTML = `
       animation: pulse-circle 2.5s infinite ease-in-out;
       filter: drop-shadow(0 0 4px #2563eb);
     }
+    .pod-pin {
+      width: 22px;
+      height: 22px;
+      box-sizing: border-box;
+      border-radius: 6px;
+      border: 2px solid #ffffff;
+      background-color: #334155;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 11px;
+      font-weight: bold;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+    .pod-pin.pod-alert {
+      background-color: #dc2626;
+    }
     .disaster-zone-tooltip {
       background: transparent;
       border: none;
@@ -111,6 +132,108 @@ const LEAFLET_HTML = `
 
     var victimMarkers = {};
     var centeredLiveVictims = {};
+    var podMarkers = {};
+    var rescuerMarker = null;
+    var rescuerAccuracyCircle = null;
+    var centeredOnRescuer = false;
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function updateRescuer(rescuer, hasSelectedVictim) {
+      if (!rescuer) {
+        if (rescuerMarker) { map.removeLayer(rescuerMarker); rescuerMarker = null; }
+        if (rescuerAccuracyCircle) { map.removeLayer(rescuerAccuracyCircle); rescuerAccuracyCircle = null; }
+        return;
+      }
+      var latlng = [rescuer.lat, rescuer.lng];
+      var radius = (typeof rescuer.accuracy === 'number' && rescuer.accuracy > 0) ? rescuer.accuracy : 0;
+
+      if (rescuerAccuracyCircle) {
+        rescuerAccuracyCircle.setLatLng(latlng);
+        rescuerAccuracyCircle.setRadius(radius);
+      } else {
+        rescuerAccuracyCircle = L.circle(latlng, {
+          radius: radius,
+          color: '#2563eb',
+          weight: 1,
+          opacity: 0.4,
+          fillColor: '#2563eb',
+          fillOpacity: 0.08,
+          interactive: false
+        }).addTo(map);
+      }
+
+      if (rescuerMarker) {
+        rescuerMarker.setLatLng(latlng);
+      } else {
+        var rescuerIcon = L.divIcon({
+          className: 'rescuer-icon',
+          html: '<div class="rescuer-pin rescuer-pulsing"></div>',
+          iconSize: [18, 18],
+          iconAnchor: [9, 9]
+        });
+        rescuerMarker = L.marker(latlng, { icon: rescuerIcon, zIndexOffset: 1000 }).addTo(map);
+        rescuerMarker.bindPopup('<b>You are here</b>');
+      }
+
+      if (!centeredOnRescuer) {
+        centeredOnRescuer = true;
+        if (!hasSelectedVictim) {
+          map.setView(latlng, Math.max(map.getZoom(), 17));
+        }
+      }
+    }
+
+    function podPopupHtml(p) {
+      return '<b>Pod ' + escapeHtml(p.nodeId) + '</b>' +
+        '<br>RSSI ' + escapeHtml(p.loraRssi) + ' dBm · Hops: ' + escapeHtml(p.hopCount) +
+        '<br>Victims nearby: ' + escapeHtml(p.bleVictims) +
+        '<br>Last seen: ' + (p.lastSeenSec == null ? 'unknown' : escapeHtml(p.lastSeenSec) + 's ago');
+    }
+
+    function updatePods(pods) {
+      var newIds = pods.map(function(p) { return p.nodeId; });
+      for (var id in podMarkers) {
+        if (newIds.indexOf(id) === -1) {
+          map.removeLayer(podMarkers[id].marker);
+          delete podMarkers[id];
+        }
+      }
+
+      pods.forEach(function(p) {
+        var latlng = [p.lat, p.lng];
+        var existing = podMarkers[p.nodeId];
+        if (existing) {
+          existing.marker.setLatLng(latlng);
+          if (existing.isAlert !== p.isAlert) {
+            existing.marker.setIcon(makePodIcon(p.isAlert));
+            existing.isAlert = p.isAlert;
+          }
+          existing.marker.setPopupContent(podPopupHtml(p));
+        } else {
+          // Info-only: popup on tap, no selectVictim message.
+          var marker = L.marker(latlng, { icon: makePodIcon(p.isAlert) }).addTo(map);
+          marker.bindPopup(podPopupHtml(p));
+          podMarkers[p.nodeId] = { marker: marker, isAlert: p.isAlert };
+        }
+      });
+    }
+
+    function makePodIcon(isAlert) {
+      return L.divIcon({
+        className: 'pod-icon',
+        html: '<div class="pod-pin' + (isAlert ? ' pod-alert' : '') + '">P</div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+    }
 
     function getSituationColor(situation) {
       if (situation === 'SOS') return '#dc2626';
@@ -144,6 +267,12 @@ const LEAFLET_HTML = `
     });
 
     function updateMap(data) {
+      if (data.pods) {
+        updatePods(data.pods);
+      }
+      if ('rescuer' in data) {
+        updateRescuer(data.rescuer, Boolean(data.hasSelectedVictim));
+      }
       if (data.victims) {
         data.victims.forEach(function(v) {
           if (v.isLive && !centeredLiveVictims[v.id]) {
@@ -227,6 +356,8 @@ export function MapView({
   setSelectedFloor,
   userPos,
   setUserPos,
+  rescuerCoords = null,
+  pods = [],
   isNavigating,
   setIsNavigating,
   toast,
@@ -241,6 +372,8 @@ export function MapView({
   setSelectedFloor: (floor: string) => void;
   userPos: { x: number; y: number };
   setUserPos: (pos: { x: number; y: number }) => void;
+  rescuerCoords?: RescuerCoords | null;
+  pods?: PodTelemetry[];
   isNavigating: boolean;
   setIsNavigating: (val: boolean) => void;
   toast: any;
@@ -317,10 +450,36 @@ export function MapView({
       };
     });
 
+  const podGpsList = pods
+    .filter((p) => p.fix && p.lat != null && p.lng != null && Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    .map((p) => {
+      const receivedMs = Date.parse(p.receivedAt);
+      return {
+        nodeId: p.nodeId,
+        lat: p.lat as number,
+        lng: p.lng as number,
+        loraRssi: p.loraRssi,
+        hopCount: p.hopCount,
+        bleVictims: p.bleVictims,
+        isAlert: p.msgType === 1 || p.bleVictims > 0,
+        lastSeenSec: Number.isFinite(receivedMs)
+          ? Math.max(0, Math.round((Date.now() - receivedMs) / 1000))
+          : null,
+      };
+    });
+
+  const rescuerGps =
+    rescuerCoords && Number.isFinite(rescuerCoords.lat) && Number.isFinite(rescuerCoords.lng)
+      ? { lat: rescuerCoords.lat, lng: rescuerCoords.lng, accuracy: rescuerCoords.accuracy }
+      : null;
+
   const sendMapUpdate = () => {
     const data = {
       type: 'update',
       victims: victimGpsList,
+      pods: podGpsList,
+      rescuer: rescuerGps,
+      hasSelectedVictim: victimGpsList.some((v) => v.isSelected),
     };
 
     const dataStr = JSON.stringify(data);
@@ -341,7 +500,7 @@ export function MapView({
     if (mapReady) {
       sendMapUpdate();
     }
-  }, [mapReady, victims, selectedVictim]);
+  }, [mapReady, victims, selectedVictim, rescuerCoords, pods]);
 
   // Reset ready state when mapType changes to force a fresh hand-shake
   useEffect(() => {
@@ -676,6 +835,14 @@ export function MapView({
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: '#dc2626' }]} />
             <Mono style={styles.legendText}>Live SOS (pod GPS location)</Mono>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#334155', borderRadius: 3 }]} />
+            <Mono style={styles.legendText}>Pod (LoRa node)</Mono>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: '#2563eb' }]} />
+            <Mono style={styles.legendText}>You</Mono>
           </View>
         </View>
 

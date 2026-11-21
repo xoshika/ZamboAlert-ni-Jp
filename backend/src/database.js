@@ -95,9 +95,13 @@ function createTables() {
         latitude REAL,
         longitude REAL,
         response_status TEXT DEFAULT 'available',
+        location_updated_at TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Alter table to add any missing columns for existing installs
+    db.run('ALTER TABLE rescuers ADD COLUMN location_updated_at TEXT', () => {});
 
     // ── Casualty / Victim logs ────────────────────────────────────────────────
     db.run(`

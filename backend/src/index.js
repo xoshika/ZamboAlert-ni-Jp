@@ -248,10 +248,33 @@ function requireOfficial(req, res, next) {
     const message = e.name === 'TokenExpiredError' ? 'Session expired. Please sign in again.' : 'Invalid session. Please sign in again.';
     return res.status(401).json({ error: message, message });
   }
-  if (!DASHBOARD_ROLES.has(payload.role)) {
+  // Mobile session JWTs (kind: 'mobile') never grant dashboard access.
+  if (payload.kind === 'mobile' || !DASHBOARD_ROLES.has(payload.role)) {
     return res.status(403).json({ error: 'This account cannot use the dashboard.', message: 'This account cannot use the dashboard.' });
   }
   req.official = payload;
+  next();
+}
+
+// ── Middleware: Rescuer mobile session guard ──────────────────────────────────
+// Requires the mobile session JWT from buildSession(), sent as
+// "Authorization: Bearer <token>". Only verified-login rescuers may pass.
+function requireRescuer(req, res, next) {
+  const match = /^Bearer\s+(\S+)$/i.exec(req.get('Authorization') || '');
+  if (!match) {
+    return res.status(401).json({ message: 'Sign in required.' });
+  }
+  let payload;
+  try {
+    payload = jwt.verify(match[1], JWT_SECRET);
+  } catch (e) {
+    const message = e.name === 'TokenExpiredError' ? 'Session expired. Please sign in again.' : 'Invalid session. Please sign in again.';
+    return res.status(401).json({ message });
+  }
+  if (payload.kind !== 'mobile' || payload.role !== 'rescuer') {
+    return res.status(401).json({ message: 'Rescuer session required.' });
+  }
+  req.mobileUser = payload;
   next();
 }
 
@@ -411,14 +434,18 @@ function buildPublicUser(u) {
 }
 
 function buildSession(u, ip) {
-  const token = `token-${u.id}-${crypto.randomBytes(16).toString('hex')}`;
+  const token = jwt.sign(
+    { userId: u.id, email: u.email, role: u.role, kind: 'mobile' },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
   return {
     id: `session-${u.id}-${Date.now()}`,
     loginTime: Date.now(),
     deviceInfo: 'App Connected (Live)',
     ipAddress: ip || '127.0.0.1',
     token,
-    expiresAt: Date.now() + 60 * 60 * 1000,
+    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
   };
 }
 
@@ -815,6 +842,40 @@ app.get('/api/rescuers', requireOfficial, (req, res) => {
   );
 });
 
+// GET /api/rescuers/locations — live positions of rescuers that have reported GPS.
+// Declared before /api/rescuers/:id so the wildcard does not swallow it.
+app.get('/api/rescuers/locations', requireOfficial, (req, res) => {
+  db.all(
+    `SELECT id, id_number, first_name, last_name, status, latitude, longitude, location_updated_at
+     FROM rescuers
+     WHERE latitude IS NOT NULL AND longitude IS NOT NULL`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: 'Database query error', error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+// POST /api/rescuers/me/location — rescuer mobile app reports its own GPS.
+// Does not touch the rescuer's status.
+app.post('/api/rescuers/me/location', requireRescuer, (req, res) => {
+  const body = req.body || {};
+  if (!validNumber(body.lat, -90, 90) || !validNumber(body.lng, -180, 180)) {
+    return res.status(400).json({ message: 'Valid lat (-90..90) and lng (-180..180) are required.' });
+  }
+  const updatedAt = new Date().toISOString();
+  db.run(
+    'UPDATE rescuers SET latitude=?, longitude=?, location_updated_at=? WHERE LOWER(TRIM(email))=LOWER(TRIM(?))',
+    [body.lat, body.lng, updatedAt, req.mobileUser.email || ''],
+    function (err) {
+      if (err) return res.status(500).json({ message: 'Failed to update location', error: err.message });
+      if (this.changes === 0) return res.status(404).json({ message: 'Rescuer profile not found.' });
+      res.json({ message: 'Location updated.', updatedAt });
+    }
+  );
+});
+
 // GET /api/rescuers/:id — single rescuer with ID document photos for admin review
 app.get('/api/rescuers/:id', requireOfficial, (req, res) => {
   db.get(
@@ -934,8 +995,8 @@ app.post('/api/rescuers/location', requireOfficial, (req, res) => {
   if (!rescuerId || latitude === undefined || longitude === undefined) {
     return res.status(400).json({ message: 'Rescuer ID, latitude, and longitude are required.' });
   }
-  let sql = 'UPDATE rescuers SET latitude=?, longitude=?';
-  const params = [parseFloat(latitude), parseFloat(longitude)];
+  let sql = 'UPDATE rescuers SET latitude=?, longitude=?, location_updated_at=?';
+  const params = [parseFloat(latitude), parseFloat(longitude), new Date().toISOString()];
   if (status) { sql += ', status=?'; params.push(status); }
   sql += ' WHERE id=? OR id_number=?';
   params.push(rescuerId, rescuerId);

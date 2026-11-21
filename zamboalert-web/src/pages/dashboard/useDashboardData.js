@@ -14,6 +14,11 @@ import { useNavigate } from "react-router-dom";
 import { INITIAL_ALERTS, INITIAL_RESCUERS, useNow } from "./dashboardData";
 import { apiFetch, fetchCitizenSos, fetchTelemetry } from "./dashboardApi";
 
+const formatLat = (value) =>
+  typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(4)}° N` : null;
+const formatLng = (value) =>
+  typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(4)}° E` : null;
+
 export function useDashboardData() {
   const navigate = useNavigate();
   const now = useNow();
@@ -126,8 +131,9 @@ export function useDashboardData() {
           status: rescuer.is_verified === 1 ? rescuer.status : "offline",
           role: rescuer.role || (rescuer.id_type?.toLowerCase().includes("tanod") ? "Tanod" : "Rescuer"),
           assignedZone: rescuer.assigned_zone || "Unassigned",
-          lat: rescuer.latitude ? `${rescuer.latitude.toFixed(4)}° N` : "6.9220° N",
-          lng: rescuer.longitude ? `${rescuer.longitude.toFixed(4)}° E` : "122.0800° E",
+          lat: formatLat(rescuer.latitude),
+          lng: formatLng(rescuer.longitude),
+          locationUpdatedAt: rescuer.location_updated_at || null,
           battery: rescuer.is_verified === 1 ? 95 : 0,
           lastPing: rescuer.is_verified === 1 ? "Just now" : "--",
           assignedTargetType: rescuer.assigned_target_type || null,
@@ -135,12 +141,47 @@ export function useDashboardData() {
           assignedTargetName: rescuer.assigned_target_name || null,
           assignedAlert: rescuer.assigned_target_type === "alert" ? rescuer.assigned_target_id : null,
         }));
-        setRescuers(mapped);
+        // Keep a location already merged in by the live poll if this response lacks one,
+        // so the 12s full refresh does not blank markers between 5s location polls.
+        setRescuers((previous) => {
+          const prevById = new Map(previous.map((r) => [r.dbId, r]));
+          return mapped.map((r) => {
+            const prior = prevById.get(r.dbId);
+            if (r.lat !== null || r.lng !== null || !prior || prior.lat === null) return r;
+            return { ...r, lat: prior.lat, lng: prior.lng, locationUpdatedAt: prior.locationUpdatedAt };
+          });
+        });
       }
     } catch (error) {
       console.error(error);
     } finally {
       setIsFetchingRescuers(false);
+    }
+  };
+
+  const fetchRescuerLocations = async () => {
+    try {
+      const res = await apiFetch("/api/rescuers/locations");
+      if (!res.ok) throw new Error(`Rescuer locations request failed: ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+      const byId = new Map(data.map((loc) => [loc.id, loc]));
+      setRescuers((previous) => {
+        let changed = false;
+        const next = previous.map((r) => {
+          const loc = byId.get(r.dbId);
+          if (!loc) return r;
+          const lat = formatLat(loc.latitude);
+          const lng = formatLng(loc.longitude);
+          const locationUpdatedAt = loc.location_updated_at || null;
+          if (r.lat === lat && r.lng === lng && r.locationUpdatedAt === locationUpdatedAt) return r;
+          changed = true;
+          return { ...r, lat, lng, locationUpdatedAt };
+        });
+        return changed ? next : previous;
+      });
+    } catch (error) {
+      console.warn("Failed to fetch rescuer locations", error);
     }
   };
 
@@ -240,6 +281,12 @@ export function useDashboardData() {
       fetchIncidents();
     }, 12000);
 
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    fetchRescuerLocations();
+    const interval = setInterval(fetchRescuerLocations, 5000);
     return () => clearInterval(interval);
   }, []);
 

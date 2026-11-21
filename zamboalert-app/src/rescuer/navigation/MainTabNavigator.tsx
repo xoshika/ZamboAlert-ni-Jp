@@ -29,6 +29,7 @@ import { styles } from "../theme/styles";
 import { RadarView } from "../components/RadarView";
 import { MapView } from "../components/MapView";
 import { fetchPodTelemetry, fetchCitizenSos, PodTelemetry, CitizenSosReport } from "../services/telemetry";
+import { useRescuerGps, useRescuerLocationSync } from "../utils/hooks";
 
 import {
   situationColors,
@@ -58,6 +59,16 @@ export function MainTabNavigator() {
   const [gatewayTelemetry, setGatewayTelemetry] = useState<PodTelemetry[]>([]);
   const [citizenSosList, setCitizenSosList] = useState<CitizenSosReport[]>([]);
   const [gatewayStatus, setGatewayStatus] = useState<"connecting" | "online" | "offline">("connecting");
+
+  // Real rescuer GPS (for the Leaflet map + backend upload). The floor-plan
+  // `userPos` above stays a percent position on the indoor schematic.
+  const isRescuerSession = Boolean(currentUser && currentSession && currentUser.role === "rescuer");
+  const rescuerCoords = useRescuerGps(isRescuerSession, () => {
+    toast.error("Location permission denied", {
+      description: "Your position will not be shown on the map or shared.",
+    });
+  });
+  useRescuerLocationSync(isRescuerSession ? currentSession?.token : null, rescuerCoords);
 
   useEffect(() => {
     let active = true;
@@ -336,6 +347,12 @@ export function MainTabNavigator() {
             setSelectedFloor={setSelectedFloor}
             userPos={userPos}
             setUserPos={setUserPos}
+            rescuerCoords={rescuerCoords}
+            pods={
+              gatewayStatus === "offline"
+                ? []
+                : gatewayTelemetry.filter((report) => report.gatewayId !== "CITIZEN-APP-GATEWAY")
+            }
             isNavigating={isNavigating}
             setIsNavigating={setIsNavigating}
             toast={toast}
